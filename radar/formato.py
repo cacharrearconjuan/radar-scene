@@ -47,9 +47,19 @@ def aviso(n, prueba=False):
         lin.append("📰 Lo confirma: " + escape(", ".join(n["confirmado_por"])))
     lin.append(f"📺 Competencia: {escape(n.get('competencia', 'sin datos'))}")
     if n.get("resumen"):
-        lin += ["", f"📝 {escape(n['resumen'])}"]
-    angulo = n.get("angulo") or ANGULO.get(n["tipo"], "")
-    lin.append(f"💡 Ángulo: {escape(angulo)}")
+        lin += ["", f"📝 <b>Qué es:</b> {escape(n['resumen'])}"]
+    if n.get("para_que"):
+        lin.append(f"🛠️ <b>Para qué sirve:</b> {escape(n['para_que'])}")
+    if n.get("idea_titulo"):
+        lin += ["", f"🎬 <b>Idea de vídeo:</b> «{escape(n['idea_titulo'])}»"]
+        if n.get("angulo"):
+            lin.append(f"🎙️ Gancho: {escape(n['angulo'])}")
+    else:
+        angulo = n.get("angulo") or ANGULO.get(n["tipo"], "")
+        lin.append(f"💡 Ángulo: {escape(angulo)}")
+    if n.get("pasos"):
+        lin += ["", "👣 <b>Paso a paso</b> <i>(sacado del README por IA: compruébalo antes de grabar)</i>"]
+        lin += [f"{i}. {escape(p)}" for i, p in enumerate(n["pasos"], 1)]
     if n.get("razones"):
         lin.append("<i>Por qué: " + escape("; ".join(n["razones"][:3])) + "</i>")
     if n.get("sin_ia"):
@@ -74,8 +84,10 @@ def resumen(items, zona, extra=0):
             linea += f" ({x['nota']}/10)"
             if x.get("competencia") and x["competencia"].startswith("ya lo sacó"):
                 linea += " · 📺 " + escape(x["competencia"])
-            if x.get("resumen"):
-                linea += f"\n  {escape(x['resumen'][:220])}"
+            if x.get("idea_titulo"):
+                linea += f"\n  🎬 «{escape(x['idea_titulo'])}»"
+            if x.get("para_que") or x.get("resumen"):
+                linea += f"\n  {escape((x.get('para_que') or x['resumen'])[:220])}"
             lin.append(linea)
     if extra:
         lin += ["", f"… y {extra} más."]

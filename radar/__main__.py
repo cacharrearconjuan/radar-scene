@@ -17,7 +17,8 @@ from .fuentes import norm
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMPOS_GUARDADOS = ("clave", "tipo", "repo", "repo_cfg", "titulo", "tag", "url", "ts", "nota", "nivel",
                     "estado_txt", "fw", "fw_ia", "resumen", "angulo", "competencia", "razones",
-                    "sin_ia", "confirmado_por", "sin_verificar", "fw_nuevo", "fw_previo", "alias")
+                    "sin_ia", "confirmado_por", "sin_verificar", "fw_nuevo", "fw_previo", "alias",
+                    "para_que", "idea_titulo", "pasos")
 
 
 def cargar_conf():
@@ -307,9 +308,9 @@ def evaluar(novedades, e, cfg, conf, ctx):
             if n["nivel"] == "descartado":
                 continue
             # IA (solo lo que ya promete)
-            if n["nota"] >= 6 and llamadas_ia < 6:
+            if n["nota"] >= 6 and llamadas_ia < 4:
                 llamadas_ia += 1
-                res = ia.enriquecer(n, e, conf, ctx)
+                res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
                 if not ia.combinar(n, res, conf["umbral_fuego"]):
                     print(f"[ia] descartado por la IA (no disponible o de juegos): {n.get('titulo')}")
                     continue
@@ -324,6 +325,17 @@ def evaluar(novedades, e, cfg, conf, ctx):
             print(f"[evaluar] {type(ex).__name__}: {ex} en {n.get('titulo')!r}")
             traceback.print_exc()
     return ya, resumen
+
+
+def _readme(n, ctx):
+    """README del repo, para que la IA saque los pasos de ahí y no se los invente."""
+    clave = n.get("repo_cfg") if n.get("tipo") != "articulo" else n.get("repo")
+    if not clave or ":" not in str(clave) or ctx.get("limite_github"):
+        return ""
+    try:
+        return fuentes.leer_readme(clave)
+    except Exception:
+        return ""
 
 
 def _descubrir(n, e, cfg, eq):
@@ -538,8 +550,8 @@ def modo_prueba(e, cfg, conf, ruta):
     n["estado_txt"] = "release publicada"
     reglas.puntuar(n, {"fw": dict(conf["fw_semilla"]), "repos": {}}, conf)
     n["nivel"] = reglas.nivel(n["nota"], conf)
-    res = ia.enriquecer(n, e, conf, {})
-    ia.combinar(n, res)
+    res = ia.enriquecer(n, e, conf, {}, readme=fuentes.leer_readme("github.com:etaHEN/etaHEN"))
+    ia.combinar(n, res, conf["umbral_fuego"])
     try:
         competencia.refrescar(cfg, e)
     except Exception as ex:

@@ -1,15 +1,29 @@
 {
   "zona": "Europe/Madrid",
   "hora_resumen": "09:00",
-  "silencio": ["00:30", "08:00"],
+  "silencio": [
+    "00:30",
+    "08:00"
+  ],
   "fuego_rompe_silencio": true,
   "umbral_fuego": 9,
   "umbral_resumen": 3,
-  "umbrales_estrellas": [50, 200, 1000],
+  "umbrales_estrellas": [
+    50,
+    200,
+    1000
+  ],
   "busqueda_dias": 14,
   "max_antiguedad_horas": 48,
-  "fw_semilla": {"sony_max": 1422, "explotable_max": 1360},
-  "ia": {"activa": true, "modelo": "auto", "timeout": 25},
+  "fw_semilla": {
+    "sony_max": 1422,
+    "explotable_max": 1360
+  },
+  "ia": {
+    "activa": true,
+    "modelo": "review",
+    "timeout": 45
+  },
   "sony": [
     "https://www.playstation.com/es-es/support/hardware/ps5/system-software-info/",
     "https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/",

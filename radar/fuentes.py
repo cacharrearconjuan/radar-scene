@@ -255,6 +255,21 @@ def commits(e, clave, info, ctx):
     }]
 
 
+def leer_readme(clave):
+    """Texto del README (sin caché; solo para dárselo a la IA)."""
+    cab = {"Accept": "application/vnd.github.raw+json"} if clave.startswith("github.com") else None
+    r = red.pedir(_url_api(clave, "readme"), cabeceras=cab, timeout=15)
+    if not r.ok:
+        return ""
+    texto = r.texto
+    if texto.lstrip().startswith("{"):
+        try:
+            texto = base64.b64decode(r.json().get("content", "")).decode("utf-8", "replace")
+        except Exception:
+            pass
+    return re.sub(r"<[^>]+>|!\[[^\]]*\]\([^)]*\)", " ", texto)[:6000]
+
+
 def readme(e, clave, info, ctx):
     """Avisa si el README pasa a declarar un firmware mayor."""
     st = e["repos"].setdefault(norm(clave), {})

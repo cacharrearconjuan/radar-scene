@@ -101,8 +101,13 @@ class Mundo:
                 return red.Resp(0, error="URLError: timed out")
             contenido = datos["messages"][1]["content"]
             disp = self.ia != "dice_no"
+            self.ultimo_prompt = contenido
+            self.ultimo_modelo = datos.get("model")
             out = {"resumen": "Resumen de prueba en castellano.", "nota": 9, "disponible": disp,
-                   "firmwares": "", "angulo": "Gancho de prueba", "es_juego": False}
+                   "para_que_sirve": "Sirve para cargar homebrew <b>sin PC</b>.",
+                   "idea_video": {"titulo": "etaHEN 3.0: así se instala", "gancho": "Ya está aquí."},
+                   "pasos": ["1. Abre Payload Manager", "2) Carga etaHEN.bin https://x.y", "Espera la notificación"],
+                   "firmwares": "", "es_juego": False}
             return red.Resp(200, json.dumps({"choices": [{"message": {
                 "content": "Claro: " + json.dumps(out)}}]}).encode())
         m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/(releases|commits|readme|contents)", url)

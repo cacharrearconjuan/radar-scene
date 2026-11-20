@@ -270,6 +270,14 @@ class TestRondas(Base):
         t = self.m.tg.del_bot[-1]["texto"]
         self.assertIn("Resumen de prueba", t)
         self.assertNotIn("(sin IA)", t)
+        self.assertEqual(self.m.ultimo_modelo, "review")
+        self.assertIn("Para qué sirve", t)
+        self.assertIn("&lt;b&gt;sin PC&lt;/b&gt;", t, "lo que dice la IA se escapa")
+        self.assertIn("Idea de vídeo", t)
+        self.assertIn("1. Abre Payload Manager", t)
+        self.assertIn("2. Carga etaHEN.bin", t)
+        self.assertNotIn("https://x.y", t, "sin enlaces de la IA")
+        self.assertIn("README del proyecto", self.m.ultimo_prompt)
         # La IA no puede tumbar una release real, pero sí un artículo
         self.m.ia = "dice_no"
         self.m.wololo = leer("wololo_feed.xml").replace(
