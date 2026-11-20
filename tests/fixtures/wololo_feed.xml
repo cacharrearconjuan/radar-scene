@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+<title>Wololo.net</title>
+<link>https://wololo.net</link>
+<item>
+  <title>PS5: etaHEN 2.6b released with support for firmware 13.60</title>
+  <link>https://wololo.net/2026/11/20/ps5-etahen-2-6b-released/</link>
+  <pubDate>Fri, 20 Nov 2026 09:10:00 +0000</pubDate>
+  <description><![CDATA[Developer LightningMods has released etaHEN 2.6b. Download links below.]]></description>
+</item>
+<item>
+  <title>PS5: Gezine teases game dump on firmware 14.22, could lead to jailbreak</title>
+  <link>https://wololo.net/2026/11/18/ps5-gezine-teases-1422/</link>
+  <pubDate>Wed, 18 Nov 2026 20:00:00 +0000</pubDate>
+  <description><![CDATA[Nothing has been released yet. The developer might share more details soon.]]></description>
+</item>
+<item>
+  <title>PS4: GoldHEN 2.5 is out</title>
+  <link>https://wololo.net/2026/11/17/ps4-goldhen-25/</link>
+  <pubDate>Tue, 17 Nov 2026 10:00:00 +0000</pubDate>
+  <description><![CDATA[PS4 only.]]></description>
+</item>
+<item>
+  <title>PS5 Relapse exploit now available for firmware 14.00 to 14.10</title>
+  <link>https://wololo.net/2026/11/20/ps5-relapse-1410/</link>
+  <pubDate>Fri, 20 Nov 2026 10:30:00 +0000</pubDate>
+  <description><![CDATA[The exploit chain has been updated on GitHub and is available now.]]></description>
+</item>
+</channel>
+</rss>

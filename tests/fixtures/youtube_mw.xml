@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <title>MODDED WARFARE</title>
+ <entry>
+  <id>yt:video:AAAAAAAAAAA</id>
+  <yt:videoId>AAAAAAAAAAA</yt:videoId>
+  <title>PS5 Jailbreak News: etaHEN 2.6b is HERE! + New Payloads</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=AAAAAAAAAAA"/>
+  <published>2026-11-20T10:00:00+00:00</published>
+  <media:group><media:description>etaHEN 2.6b released today</media:description></media:group>
+ </entry>
+ <entry>
+  <id>yt:video:BBBBBBBBBBB</id>
+  <yt:videoId>BBBBBBBBBBB</yt:videoId>
+  <title>The new 13.60 Relapse Jailbreak is here!</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=BBBBBBBBBBB"/>
+  <published>2026-09-30T18:00:00+00:00</published>
+ </entry>
+</feed>

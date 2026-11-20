@@ -1,0 +1,63 @@
+# Fuentes del radar. Una por línea; lo que va detrás de # se ignora.
+#
+# Repos:  owner/repo  [opciones]
+#   commits   -> además de las releases, vigila los commits (repos sin releases)
+#   readme    -> vigila el rango de firmware del README
+#   nucleo    -> repo clave: una versión nueva con novedades ya es 🔥
+#   alias=a,b -> otros nombres (para no repetir avisos y buscar en la competencia)
+# Gitea: pon la URL completa, p. ej. https://git.etawen.dev/owner/repo
+#
+# [A] se mira en cada ronda; [B] cada 3 rondas. Los repos de [listas] entran solos (tier C).
+
+[A]
+ntfargo/Relapse-Exploit          commits readme nucleo alias=Relapse
+Gezine/Y2JB                      readme nucleo alias=Y2JB
+Gezine/Luac0re                   readme nucleo alias=Luac0re
+idlesauce/umtx2                  commits readme nucleo alias=umtx2,UMTX2
+kmeps4/PSFree                    commits readme alias=PSFree
+etaHEN/etaHEN                    nucleo alias=etaHEN,eta HEN
+EchoStretch/kstuff               nucleo alias=kstuff
+EchoStretch/kstuff-lite          alias=kstuff-lite,kstuff lite
+itsPLK/ps5-kexp                  alias=kexp
+ps5-payload-dev/elfldr           alias=elfldr
+aydencharles/onionHEN            alias=onionHEN,OnionHEN
+matem6/P2JB-Y2JB-Porting         alias=P2JB,p2jb
+drakmor/ShadowMountPlus          alias=ShadowMountPlus,ShadowMount
+ps5-linux/ps5-linux-loader       alias=PS5 Linux,ps5-linux
+Cryptogenic/PS5-IPV6-Kernel-Exploit alias=IPV6 kernel exploit
+
+[B]
+LightningMods/Itemzflow          alias=Itemzflow,ItemzFlow
+itsPLK/ps5-payload-manager       alias=Payload Manager,pldmgr
+itsPLK/ps5-webkit-autoloader     alias=WebKit Autoloader
+itsPLK/ps5-y2jb-autoloader       alias=Y2JB Autoloader
+itsPLK/ps5-lua-autoloader        alias=Lua Autoloader
+itsPLK/ps5-pkg-manager           alias=PKG Manager
+phantomptr/ps5upload             alias=ps5upload
+knutwurst/ps5-patchdl            alias=PatchDL
+BrinooTk/PS5X360                 alias=PS5X360,Xbox 360
+Press5elect/PSSwanStation        alias=PSSwanStation,SwanStation
+boykopovar/AnyPS5                alias=AnyPS5
+ps5-payload-dev/sdk              alias=ps5-payload-sdk,payload SDK
+BestPig/BackPork                 alias=BackPork
+
+[listas]
+# Lista oficial de PS5 Payload Manager y la tuya: cualquier payload nuevo se vigila solo
+https://itsplk.github.io/ps5-payloads-mirror/payloads_v2.json
+https://cacharrearconjuan.github.io/mis-payloads-ps5/payloads.json
+
+[excluir]
+# Nunca avisar de estos repos (volcadores de juegos y similares)
+quer3q/ps5-dump-forge
+EchoStretch/ps5-app-dumper
+cacharrearconjuan/PS5-AutoupdaterPM
+
+[youtube]
+# Competencia: @handle  nombre=Como sale en el aviso   (también vale channel_id=UC...)
+@MODDEDWARFARE                   nombre=MODDED WARFARE
+@TheWizWiki                      nombre=TheWizWiki
+@nanospeedgamer                  nombre=nanospeedgamer
+
+[prensa]
+# Solo se avisa si el artículo habla de algo ya publicado (nada de teasers)
+https://wololo.net/feed/

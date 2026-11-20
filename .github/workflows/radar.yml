@@ -1,0 +1,62 @@
+name: radar
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Qué hacer"
+        type: choice
+        options: [ronda, prueba, diagnostico, resumen]
+        default: ronda
+  schedule:
+    - cron: "7,22,37,52 * * * *"   # respaldo por si cron-job.org falla
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MODO: ${{ inputs.modo || 'ronda' }}
+      GH_TOKEN: ${{ github.token }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SUPER_IA_URL: ${{ secrets.SUPER_IA_URL }}
+      SUPER_IA_KEY: ${{ secrets.SUPER_IA_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Traer el estado (rama «estado»)
+        run: |
+          REMOTO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$REMOTO" estado >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch estado "$REMOTO" _estado
+          else
+            mkdir -p _estado && git -C _estado init -q -b estado && git -C _estado remote add origin "$REMOTO"
+          fi
+
+      - name: Radar
+        run: python3 -m radar "$MODO" --estado _estado/estado.json
+
+      - name: Guardar el estado
+        if: always()
+        run: |
+          cd _estado
+          [ -f estado.json ] || exit 0
+          git config user.name "radar-bot"
+          git config user.email "radar-bot@users.noreply.github.com"
+          git add estado.json
+          if git rev-parse -q --verify HEAD >/dev/null; then
+            git diff --cached --quiet && exit 0
+            git commit -q --amend -m "estado"
+          else
+            git commit -q -m "estado"
+          fi
+          git push -q -f origin estado

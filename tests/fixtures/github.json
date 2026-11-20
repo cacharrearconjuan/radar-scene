@@ -1,0 +1,56 @@
+{
+  "releases": {
+    "etaHEN/etaHEN": [
+      {"id": 9001, "tag_name": "2.6b", "name": "etaHEN 2.6b", "draft": false, "prerelease": false,
+       "published_at": "2026-11-20T08:50:00Z", "html_url": "https://github.com/etaHEN/etaHEN/releases/tag/2.6b",
+       "body": "- Added support for firmware 13.60\n- Integrated kstuff 1.7\n- New toolbox options\n- Fixed crash on 12.00",
+       "assets": [{"name": "etaHEN-2.6b.bin", "browser_download_url": "https://github.com/etaHEN/etaHEN/releases/download/2.6b/etaHEN-2.6b.bin"}]},
+      {"id": 8000, "tag_name": "2.5b", "name": "etaHEN 2.5b", "draft": false, "prerelease": false,
+       "published_at": "2026-10-01T08:50:00Z", "html_url": "https://github.com/etaHEN/etaHEN/releases/tag/2.5b",
+       "body": "bug fixes", "assets": []}
+    ],
+    "itsPLK/ps5-payload-manager": [
+      {"id": 9101, "tag_name": "v0.6.4", "name": "v0.6.4", "draft": false, "prerelease": false,
+       "published_at": "2026-11-20T09:30:00Z", "html_url": "https://github.com/itsPLK/ps5-payload-manager/releases/tag/v0.6.4",
+       "body": "## Features\n- Translations: Updated localization files across supported languages.\n- New Languages: Polish",
+       "assets": [{"name": "pldmgr_v0.6.4.elf", "browser_download_url": "x"}]}
+    ],
+    "EchoStretch/kstuff": [
+      {"id": 9201, "tag_name": "v1.7.0-beta", "name": "kstuff 1.7 beta: 14.10 support", "draft": false, "prerelease": true,
+       "published_at": "2026-11-20T11:00:00Z", "html_url": "https://github.com/EchoStretch/kstuff/releases/tag/v1.7.0-beta",
+       "body": "Experimental support for FW 14.00 and 14.10. Use at your own risk.",
+       "assets": [{"name": "kstuff.elf", "browser_download_url": "x"}]}
+    ],
+    "BrinooTk/PS5X360": [
+      {"id": 9301, "tag_name": "v1.0.3", "name": "PS5X360 v1.0.3", "draft": false, "prerelease": false,
+       "published_at": "2026-11-20T07:00:00Z", "html_url": "https://github.com/BrinooTk/PS5X360/releases/tag/v1.0.3",
+       "body": "Minor fixes.", "assets": [{"name": "PS5X360.zip", "browser_download_url": "x"}]}
+    ],
+    "Gezine/Y2JB": [
+      {"id": 9401, "tag_name": "Y2JB-1.3.0", "name": "Y2JB 1.3.0", "draft": true, "prerelease": false,
+       "published_at": null, "html_url": "x", "body": "draft for 14.22", "assets": []}
+    ]
+  },
+  "commits": {
+    "ntfargo/Relapse-Exploit": [
+      {"sha": "c0ffee1", "html_url": "https://github.com/ntfargo/Relapse-Exploit/commit/c0ffee1",
+       "commit": {"message": "Add firmware 14.00 and 14.10 offsets", "author": {"date": "2026-11-20T10:00:00Z"}}},
+      {"sha": "c0ffee0", "html_url": "https://github.com/ntfargo/Relapse-Exploit/commit/c0ffee0",
+       "commit": {"message": "typo in README", "author": {"date": "2026-11-19T10:00:00Z"}}}
+    ]
+  },
+  "search": {
+    "total_count": 3,
+    "items": [
+      {"full_name": "newdev/PS5-Kernel-Exploit-1422", "html_url": "https://github.com/newdev/PS5-Kernel-Exploit-1422",
+       "description": "PS5 kernel exploit for firmware 14.22", "stargazers_count": 640, "fork": false, "size": 820,
+       "created_at": "2026-11-19T22:00:00Z", "pushed_at": "2026-11-20T09:00:00Z"},
+      {"full_name": "someone/ps5-theme", "html_url": "https://github.com/someone/ps5-theme",
+       "description": "A PS5 inspired website theme", "stargazers_count": 12, "fork": false, "size": 50,
+       "created_at": "2026-11-18T22:00:00Z", "pushed_at": "2026-11-18T22:00:00Z"},
+      {"full_name": "faker/ps5-jailbreak-1422-free", "html_url": "https://github.com/faker/ps5-jailbreak-1422-free",
+       "description": "PS5 jailbreak 14.22 coming soon, star to get notified", "stargazers_count": 90, "fork": false, "size": 0,
+       "created_at": "2026-11-20T01:00:00Z", "pushed_at": "2026-11-20T01:00:00Z"}
+    ]
+  }
+}
