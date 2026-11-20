@@ -21,7 +21,7 @@ Nunca avisa de descargas de juegos ni de volcados.
 - ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen diario** (09:00, hora de Madrid).
 - Por debajo de 3 (solo traducciones, builds automáticas…), nada.
 
-Si la IA (`SUPER_IA_URL`, modelo `review`) responde, cada aviso lleva:
+Si la IA (`SUPER_IA_URL`, modelo `auto`) responde, cada aviso lleva:
 - **Qué es** y **para qué sirve**, en castellano.
 - **Idea de vídeo**: título y gancho.
 - **Paso a paso**: sacado del README del repo y de las notas de la versión. Si no hay datos, no se inventa nada.

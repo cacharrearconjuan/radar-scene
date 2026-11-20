@@ -55,7 +55,9 @@ class FalloIA(Exception):
 
 def _pedir_modelo(modelo, timeout, contenido):
     """Una llamada. Devuelve el dict de la IA o lanza FalloIA con un motivo legible y sin datos privados."""
-    datos = {"model": modelo, "temperature": 0.2, "max_tokens": 2000,
+    # Modelos que «piensan» (MiniMax, DeepSeek…): el razonamiento cuenta dentro de max_tokens,
+    # así que hace falta mucho margen o la respuesta llega vacía
+    datos = {"model": modelo, "temperature": 0.2, "max_tokens": 8000,
              "messages": [{"role": "system", "content": SISTEMA},
                           {"role": "user", "content": contenido}]}
     t0 = time.time()
@@ -72,14 +74,22 @@ def _pedir_modelo(modelo, timeout, contenido):
     if not r.ok:
         raise FalloIA(f"HTTP {r.status}")
     try:
-        txt = r.json()["choices"][0]["message"].get("content") or ""
+        eleccion = r.json()["choices"][0]
+        msg = eleccion["message"]
+        txt = msg.get("content") or ""
+        fin = eleccion.get("finish_reason") or "?"
     except (ValueError, KeyError, IndexError, TypeError, AttributeError):
         raise FalloIA("respuesta con formato raro")
-    if not txt.strip():
-        raise FalloIA("respuesta vacía")
-    out = _extraer_json(txt)
+    out = _extraer_json(txt) if txt.strip() else None
+    if out is None:                     # a veces el JSON acaba dentro del razonamiento
+        for k in ("reasoning_content", "reasoning"):
+            if isinstance(msg.get(k), str) and _extraer_json(msg[k]):
+                out = _extraer_json(msg[k])
+                break
+    if out is None and not txt.strip():
+        raise FalloIA(f"respuesta vacía ({seg} s, fin: {fin})")
     if out is None:
-        raise FalloIA("respuesta sin JSON" if "{" not in txt else "JSON incompleto")
+        raise FalloIA(("respuesta sin JSON" if "{" not in txt else "JSON incompleto") + f" (fin: {fin})")
     print(f"[ia] {modelo} respondió en {seg} s")
     return out
 
@@ -108,12 +118,12 @@ def enriquecer(n, e, conf, ctx, readme=""):
         if not disponible_ia(e, conf):
             n["ia_motivo"] = "IA desactivada o en pausa tras varios fallos"
             return None
-        if ctx.get("ia_segundos", 0) > 240:
+        if ctx.get("ia_segundos", 0) > 420:
             n["ia_motivo"] = "sin tiempo en esta ronda"
             return None
         contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
                      f"Versión: {n.get('tag')}\nNotas:\n{str(n.get('texto') or '')[:3000]}\n\n"
-                     f"README del proyecto:\n{str(readme or '(no disponible)')[:5000]}")
+                     f"README del proyecto:\n{str(readme or '(no disponible)')[:4000]}")
         intentos = [(conf["ia"].get("modelo", "review"), conf["ia"].get("timeout", 100))]
         if conf["ia"].get("respaldo"):
             intentos.append((conf["ia"]["respaldo"], conf["ia"].get("timeout_respaldo", 50)))

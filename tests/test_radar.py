@@ -270,7 +270,7 @@ class TestRondas(Base):
         t = self.m.tg.del_bot[-1]["texto"]
         self.assertIn("Resumen de prueba", t)
         self.assertNotIn("(sin IA)", t)
-        self.assertEqual(self.m.ultimo_modelo, "review")
+        self.assertEqual(self.m.ultimo_modelo, "auto")
         self.assertIn("Para qué sirve", t)
         self.assertIn("&lt;b&gt;sin PC&lt;/b&gt;", t, "lo que dice la IA se escapa")
         self.assertIn("Idea de vídeo", t)
@@ -560,14 +560,22 @@ class TestVerificacion(unittest.TestCase):
 
 
 class TestIA(Base):
-    def test_review_lenta_tira_de_auto(self):
+    def test_json_dentro_del_razonamiento(self):
         self.ronda()
-        self.m.ia = "review_lenta"
+        orig = self.m.__class__.__call__
+
+        def llamar(slf, url, cab, datos):
+            if "chat/completions" in url:
+                out = {"resumen": "r", "nota": 9, "disponible": True, "para_que_sirve": "p",
+                       "idea_video": {"titulo": "Titulo del video", "gancho": "g"}, "pasos": ["uno"],
+                       "firmwares": "", "es_juego": False}
+                return red.Resp(200, json.dumps({"choices": [{"finish_reason": "stop", "message": {
+                    "content": "", "reasoning_content": "Pienso... " + json.dumps(out)}}]}).encode())
+            return orig(slf, url, cab, datos)
         self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
-        self.ronda()
-        self.assertEqual(self.m.modelos_pedidos[:2], ["review", "auto"])
-        t = self.m.tg.del_bot[-1]["texto"]
-        self.assertIn("Idea de vídeo", t)
+        with mock.patch.object(self.m.__class__, "__call__", llamar):
+            self.ronda()
+        self.assertIn("Titulo del video", self.m.tg.del_bot[-1]["texto"])
 
     def test_motivo_visible_si_falla(self):
         self.ronda()
@@ -575,7 +583,7 @@ class TestIA(Base):
         self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
         self.ronda()
         t = self.m.tg.del_bot[-1]["texto"]
-        self.assertIn("sin IA: review: sin conexión con super-ia; auto: sin conexión", t)
+        self.assertIn("sin IA: auto: sin conexión con super-ia", t)
         self.assertNotIn("ejemplo", t)
 
     def test_json_con_adornos(self):
