@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from . import firmware, red
+from .reglas import RE_PROMESA
 from .estado import salud
 
 API = "https://api.github.com"
@@ -370,6 +371,8 @@ def busqueda(e, cfg, conf, ctx):
         cruzados = [u for u in umbrales if estrellas >= u and u not in st["umbrales"]]
         if not cruzados:
             continue
+        if sembrada and RE_PROMESA.search(str(it.get("description") or "")):
+            continue                      # solo promete: se vuelve a mirar si cambia
         if not sembrada:
             st["umbrales"] += cruzados
             continue

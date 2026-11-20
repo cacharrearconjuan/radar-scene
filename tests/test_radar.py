@@ -528,3 +528,24 @@ class TestRevision2(Base):
         self.assertEqual(sum("etaHEN 3.0" in m["texto"] for m in self.m.tg.del_bot), 1)
         prueba = [m for m in self.m.tg.del_bot if "PRUEBA" in m["texto"]][0]
         self.assertIn(prueba["markup"], (None, {"inline_keyboard": []}))
+
+
+class TestVerificacion(unittest.TestCase):
+    conf = radar.cargar_conf()
+
+    def test_ia_respeta_topes_y_fuegos(self):
+        from radar import ia as IA
+        sube = {"resumen": "r", "nota": 10, "disponible": True, "firmwares": "", "angulo": "a", "es_juego": False}
+        baja = dict(sube, nota=3)
+        commit = {"tipo": "commit", "nota": 8, "tope": 8, "tier": "A"}
+        IA.combinar(commit, sube, 9)
+        self.assertEqual(commit["nota"], 8, "la IA no convierte un commit en 🔥")
+        prensa = {"tipo": "articulo", "nota": 9, "tope": 9, "tier": "C"}
+        self.assertTrue(IA.combinar(prensa, baja, 9))
+        self.assertEqual(prensa["nota"], 9, "la IA no le quita el 🔥 al exploit de prensa")
+
+    def test_descripciones_normales_no_son_promesas(self):
+        for d in ["PS5 kernel exploit for FW 4.03. Not affiliated with Sony.", "PS5 payload that shows FPS overlay",
+                  "PS5 jailbreak, see writeup for details", "Does not work after 2.70"]:
+            self.assertIsNone(reglas.RE_PROMESA.search(d), d)
+        self.assertTrue(reglas.RE_PROMESA.search("PS5 jailbreak 14.30 coming soon, star to get notified"))

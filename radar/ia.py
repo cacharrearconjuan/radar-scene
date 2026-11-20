@@ -103,10 +103,11 @@ def combinar(n, ia, umbral_fuego=9):
         print(f"[ia] dice que no está disponible, pero es una release real: {n.get('url')}")
     reglas = n["nota"]
     nota = max(reglas - 2, min(reglas + 1, ia["nota"]))
+    if not duro and reglas < umbral_fuego:
+        nota = min(nota, 8)
+    nota = min(nota, n.get("tope", 10))   # los topes de las reglas mandan (commits, sin verificar...)
     if reglas >= umbral_fuego:
         nota = max(nota, reglas)  # la IA no puede quitarle el 🔥 a lo que ya lo tenía
-    if not duro:
-        nota = min(nota, 8)
     n["nota"] = nota
     n["resumen"] = ia["resumen"]
     n["angulo"] = ia["angulo"]

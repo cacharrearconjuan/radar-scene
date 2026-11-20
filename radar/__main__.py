@@ -440,7 +440,10 @@ def toca_resumen(e, conf, forzar=False):
 
 
 def enviar_resumen(e, cfg, conf, ruta, forzar=False):
-    if not toca_resumen(e, conf, forzar) and not e["resumen"].get("congelado"):
+    pendiente = e["resumen"].get("congelado")
+    if pendiente and not forzar and en_silencio(conf):
+        return
+    if not toca_resumen(e, conf, forzar) and not pendiente:
         return
     dia = ahora_local(conf).strftime("%Y-%m-%d")
     r = e["resumen"]
@@ -473,7 +476,7 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         c["enviados"] = i + 1
         estado.guardar(e, ruta)
     r.pop("congelado", None)
-    r["ultimo_dia"] = dia
+    r["ultimo_dia"] = max(c["dia"], r.get("ultimo_dia") or "")
     estado.guardar(e, ruta)
 
 

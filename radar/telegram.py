@@ -46,7 +46,7 @@ def ya_llego(e, markup, limite=60):
     ultimo = int(e["tg"].get("ultimo_msg_id") or 0)
     if not ultimo:
         return None
-    seguidos_no_existe = seguidos_sin_red = 0
+    seguidos_no_existe = seguidos_sin_red = editados = 0
     for mid in range(ultimo + 1, ultimo + 1 + limite):
         r, j = llamar("editMessageReplyMarkup",
                       {"chat_id": _chat(), "message_id": mid, "reply_markup": markup}, timeout=15)
@@ -64,6 +64,9 @@ def ya_llego(e, markup, limite=60):
             # botones): se le devuelve tal cual estaba y se sigue buscando
             llamar("editMessageReplyMarkup", {"chat_id": _chat(), "message_id": mid,
                                               "reply_markup": {"inline_keyboard": []}}, timeout=15)
+            editados += 1
+            if editados >= 3:
+                return None      # el último id conocido está desfasado: no tocar más mensajes
             seguidos_no_existe = 0
             continue
         if "not found" in desc:
@@ -76,9 +79,8 @@ def ya_llego(e, markup, limite=60):
 
 
 PERMANENTE = -1
-# Errores del propio mensaje (no del grupo): reintentar no sirve de nada
-RE_MENSAJE_MALO = re.compile(r"can't parse|entities|message is too long|text must be non-empty|"
-                             r"button|reply markup|url|wrong http url|unsupported url", re.I)
+# Errores del grupo (no del mensaje): se arreglan cambiando el secreto o el grupo; se reintenta
+RE_GRUPO = re.compile(r"chat|rights|upgraded|kicked|blocked|not a member|forbidden|deactivated", re.I)
 
 
 def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None, registrar=True):
@@ -127,14 +129,15 @@ def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None, registra
             print("[tg] sin respuesta y sin forma de comprobarlo; no se reintenta para no duplicar")
             return None
         print(f"[tg] error {r.status}: {j.get('description') or r.error}")
-        if r.status == 400 and RE_MENSAJE_MALO.search(desc):
+        if r.status in (400, 403) and RE_GRUPO.search(desc):
+            print("[tg] ⚠️ problema con el grupo (¿cambió el chat_id o el bot no está?): "
+                  "revisa el secreto TELEGRAM_CHAT_ID. Se reintenta en la próxima ronda.")
+            return None
+        if r.status == 400:
             if registrar:
                 e["tg"]["en_curso"] = None
             return PERMANENTE      # el mensaje en sí no vale: no bloquear la cola
-        if r.status in (400, 403) and ("chat" in desc or "rights" in desc or "upgraded" in desc):
-            print("[tg] ⚠️ problema con el grupo (¿cambió el chat_id o el bot no está?): "
-                  "revisa el secreto TELEGRAM_CHAT_ID. Se reintenta en la próxima ronda.")
-        return None                # token/chat mal o caído: reintentar más tarde
+        return None                # token mal o Telegram caído: reintentar más tarde
     return None
 
 

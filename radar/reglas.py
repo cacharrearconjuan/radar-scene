@@ -16,6 +16,10 @@ RE_PRENSA_NO = re.compile(
     r"se espera|anuncia|promete|avance|will|to be|won't|not|yet|next (?:week|month)|"
     r"after|video|write-?up|shows?|showing|details|explained|teaser|confirm(s|ed)?|"
     r"working on|in the works|delay(ed)?|soon™)\b|\?", re.I)
+# Repos que solo prometen (descripción): lista corta y específica
+RE_PROMESA = re.compile(r"coming soon|star (this|to|for)|notif(y|ied|ication)|release soon|releasing soon|"
+                        r"\bwip\b|work in progress|placeholder|stay tuned|próximamente|en desarrollo|"
+                        r"\bsoon\b|follow (me|us) for", re.I)
 RE_JUEGOS = re.compile(r"\b(CUSA|PPSA)\d{5}\b|dlpsgame|game ?dump(s|er|ers)?\b|app ?dumper|"
                        r"\bdumper\b|game ?backups?\b|game[- ]?compressor|free games? download|"
                        r"\bwarez\b|pirat", re.I)
@@ -80,9 +84,6 @@ def disponible(n):
     if t == "firmware_sony":
         return True, "firmware oficial publicado"
     if t == "repo_nuevo":
-        if RE_PRENSA_NO.search(f"{n.get('titulo', '')} {n.get('texto', '')}") or \
-                re.search(r"star (this|to)|notif(y|ied)|coming soon|soon", str(n.get("texto", "")), re.I):
-            return False, "repo que solo promete"
         return True, "código publicado (repo nuevo)"
     if t == "articulo":
         tit = n.get("titulo", "")
@@ -137,6 +138,7 @@ def puntuar(n, e, conf):
                 nota = min(max(nota, 7), 8)      # las estrellas se compran: sin verificar
         if estrellas < 1000:
             nota = min(nota, 8)
+            n["tope"] = 8
             n["sin_verificar"] = True
         return _fin(n, nota, raz)
 
@@ -194,6 +196,7 @@ def puntuar(n, e, conf):
                               f"ahora ({firmware.fmt(expl_max)})!")
             else:
                 nota = min(max(nota + 2, 7), 8)
+                n["tope"] = 8
                 n["sin_verificar"] = True
                 raz.insert(0, f"menciona {firmware.fmt(fw.max)} (sin confirmar como exploit)")
         elif fw.max > st_repo.get("fw_max", 0) and st_repo.get("fw_max"):
@@ -210,8 +213,10 @@ def puntuar(n, e, conf):
 
     if t == "commit":
         nota = min(nota, 8)              # un push no es una versión: nunca 🔥 por sí solo
+        n["tope"] = 8
     if t == "articulo":
         nota = min(max(nota, 6), 7)
+        n["tope"] = 7
         raz.append(f"publicado en {n.get('medio', 'prensa')}")
         # Exploit nuevo que solo llega por prensa fiable, con descarga y para un firmware
         # por encima de lo conocido: 🔥 (no mueve el listón de lo explotable)
@@ -220,6 +225,7 @@ def puntuar(n, e, conf):
         if n.get("enlace_descarga") and re.search(r"exploit|jailbreak|kernel|\bhen\b", tit, re.I) \
                 and fw_t.max > expl_max:
             nota = 9
+            n["tope"] = 9
             n["sin_verificar"] = True
             raz.insert(0, f"exploit para {firmware.fmt(fw_t.max)} con descarga, según {n.get('medio', 'prensa')}")
     return _fin(n, nota, raz)

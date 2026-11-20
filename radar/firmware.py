@@ -60,9 +60,13 @@ RE_NEGATIVO = re.compile(
     r"\bnot\b|n't\b|\bno\b|\bunsupported|\bdo not update|\bavoid\b|\bbeyond\b|\bwip\b|\btodo\b|"
     r"\bsoon\b|\bplanned\b|\bcoming\b|\bfuture\b|\bblocked\b|\bpatch(?:ed|es)\b|\bfixed in\b|"
     r"\bwill\b|\bnot yet\b|\btest(?:ing)?\b|\bexperimental\b|\bpartial\b|"
-    r"\bremoved?\b|\bdropp(?:ed|ing)\b|\brequires?\b|\brequired\b|\bbroken\b|\bunstable\b|"
-    r"\bdeprecated\b|❌|✗|✖|🚫|⛔|"
+    r"\bbroken\b|\bunstable\b|❌|✗|✖|🚫|⛔|"
     r"\bno (?:es|está) compatible|\bsin soporte|\bno funciona|\bno actualic", re.I)
+# Negaciones que solo cuentan pegadas al número: «requires 13.00», «removed (support for) 4.xx»,
+# «(14.00 requires a different entry point)»; pero no «14.00 (requires a reboot)»
+RE_NEG_ANTES = re.compile(r"(?i)\b(requires?|required|removed?|dropp(?:ed|ing)|deprecated|no longer)\b"
+                          r"[^.;\n]{0,30}$")
+RE_NEG_DESPUES = re.compile(r"(?i)^\s*(requires?|is required|needs|removed|dropped|deprecated)\b")
 RE_PS4 = re.compile(r"\bps4\b|orbis", re.I)
 RE_PS5 = re.compile(r"\bps5\b|prospero", re.I)
 RE_VERSION = re.compile(r"(?i)\b(v|ver\.?|version|versión|release|build)\s*\d+(\.\d+)+")
@@ -107,7 +111,13 @@ def extraer(texto, tag=None, techo=None, estricto=False):
         if RE_PS4.search(frase) and not RE_PS5.search(frase):
             continue
         ocupado = []
+        def negado(ini, fin):
+            return bool(RE_NEG_ANTES.search(frase[max(0, ini - 35):ini]) or RE_NEG_DESPUES.match(frase[fin:]))
+
         for m in RE_RANGO.finditer(frase):
+            if negado(m.start(), m.end()):
+                ocupado.append(m.span())
+                continue
             a, b = _num(m.group(1), m.group(2)), _num(m.group(3), m.group(4))
             if 100 <= a <= techo and 100 <= b <= techo and a <= b:
                 vals.update((a, b))
@@ -116,7 +126,7 @@ def extraer(texto, tag=None, techo=None, estricto=False):
             if any(s <= m.start() < e for s, e in ocupado):
                 continue
             n = _num(m.group(1), m.group(2))
-            if n in excluir or not (100 <= n <= techo):
+            if n in excluir or not (100 <= n <= techo) or negado(m.start(), m.end()):
                 continue
             ventana = frase[max(0, m.start() - 30): m.end() + 30]
             if RE_CONTEXTO.search(ventana):
