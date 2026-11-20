@@ -23,7 +23,7 @@ concurrency:
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 14
     env:
       MODO: ${{ inputs.modo || 'ronda' }}
       GH_TOKEN: ${{ github.token }}
@@ -53,7 +53,7 @@ jobs:
           fi
 
       - name: Radar
-        timeout-minutes: 6          # deja tiempo a «Guardar el estado»
+        timeout-minutes: 11         # deja tiempo a «Guardar el estado»
         run: python3 -m radar "$MODO" --estado _estado/estado.json
 
       - name: Guardar el estado

@@ -7,6 +7,7 @@ fiable (se recorta, se le quitan enlaces y se escapa al formatear).
 import json
 import os
 import re
+import time
 
 from . import red
 
@@ -48,33 +49,99 @@ def disponible_ia(e, conf):
     return True
 
 
-def enriquecer(n, e, conf, ctx, readme=""):
-    """Nunca lanza excepciones: si algo falla devuelve None y el aviso sale sin IA."""
+class FalloIA(Exception):
+    pass
+
+
+def _pedir_modelo(modelo, timeout, contenido):
+    """Una llamada. Devuelve el dict de la IA o lanza FalloIA con un motivo legible y sin datos privados."""
+    datos = {"model": modelo, "temperature": 0.2, "max_tokens": 2000,
+             "messages": [{"role": "system", "content": SISTEMA},
+                          {"role": "user", "content": contenido}]}
+    t0 = time.time()
+    r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
+                  cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
+                  timeout=timeout, metodo="POST")
+    seg = int(time.time() - t0)
+    if r.status == 0:
+        if r.error.startswith("URLError"):
+            raise FalloIA("sin conexión con super-ia")
+        if "Timeout" in r.error or "timed out" in r.error or seg >= timeout - 1:
+            raise FalloIA(f"tiempo agotado ({seg} s)")
+        raise FalloIA("se cortó la conexión")
+    if not r.ok:
+        raise FalloIA(f"HTTP {r.status}")
     try:
-        if ctx.get("ia_fallos_ronda", 0) >= 2 or not disponible_ia(e, conf):
+        txt = r.json()["choices"][0]["message"].get("content") or ""
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        raise FalloIA("respuesta con formato raro")
+    if not txt.strip():
+        raise FalloIA("respuesta vacía")
+    out = _extraer_json(txt)
+    if out is None:
+        raise FalloIA("respuesta sin JSON" if "{" not in txt else "JSON incompleto")
+    print(f"[ia] {modelo} respondió en {seg} s")
+    return out
+
+
+def _extraer_json(txt):
+    txt = re.sub(r"```(?:json)?", "", str(txt))
+    ini, fin = txt.find("{"), txt.rfind("}")
+    if ini < 0 or fin <= ini:
+        return None
+    for trozo in (txt[ini:fin + 1], txt[ini:fin + 1].replace("\n", " ")):
+        try:
+            out = json.loads(trozo, strict=False)
+            return out if isinstance(out, dict) else None
+        except ValueError:
+            continue
+    return None
+
+
+def enriquecer(n, e, conf, ctx, readme=""):
+    """Nunca lanza excepciones: si algo falla devuelve None, deja el motivo en n["ia_motivo"]
+    y el aviso sale sin IA. Prueba el modelo principal y, si falla, el de respaldo."""
+    try:
+        if ctx.get("ia_fallos_ronda", 0) >= 2:
+            n["ia_motivo"] = "super-ia ya falló en esta ronda"
+            return None
+        if not disponible_ia(e, conf):
+            n["ia_motivo"] = "IA desactivada o en pausa tras varios fallos"
+            return None
+        if ctx.get("ia_segundos", 0) > 240:
+            n["ia_motivo"] = "sin tiempo en esta ronda"
             return None
         contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
                      f"Versión: {n.get('tag')}\nNotas:\n{str(n.get('texto') or '')[:3000]}\n\n"
                      f"README del proyecto:\n{str(readme or '(no disponible)')[:5000]}")
-        datos = {"model": conf["ia"].get("modelo", "review"), "temperature": 0.2, "max_tokens": 1400,
-                 "messages": [{"role": "system", "content": SISTEMA},
-                              {"role": "user", "content": contenido}]}
-        r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
-                      cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
-                      timeout=conf["ia"].get("timeout", 25), metodo="POST")
-        if not r.ok:
-            raise ValueError(r.error or f"HTTP {r.status}")
-        txt = r.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", str(txt), re.S)
-        out = json.loads(m.group(0))
+        intentos = [(conf["ia"].get("modelo", "review"), conf["ia"].get("timeout", 100))]
+        if conf["ia"].get("respaldo"):
+            intentos.append((conf["ia"]["respaldo"], conf["ia"].get("timeout_respaldo", 50)))
+        motivos, out = [], None
+        for modelo, timeout in intentos:
+            t0 = time.time()
+            try:
+                out = _pedir_modelo(modelo, timeout, contenido)
+                break
+            except FalloIA as ex:
+                motivos.append(f"{modelo}: {ex}")
+                print(f"[ia] {modelo}: {ex}")
+            finally:
+                ctx["ia_segundos"] = ctx.get("ia_segundos", 0) + time.time() - t0
+        if out is None:
+            raise FalloIA("; ".join(motivos))
         idea = out.get("idea_video") if isinstance(out.get("idea_video"), dict) else {}
         pasos = out.get("pasos") if isinstance(out.get("pasos"), list) else []
+        try:
+            nota = max(1, min(10, int(float(out.get("nota")))))
+        except (TypeError, ValueError):
+            nota = n.get("nota", 5)
         res = {
             "resumen": _limpio(out.get("resumen"), 400),
             "para_que": _limpio(out.get("para_que_sirve"), 400),
             "idea_titulo": _limpio(idea.get("titulo"), 90),
             "pasos": [p for p in (_limpio(re.sub(r"^\s*\d+[.)-]\s*", "", str(x)), 220) for x in pasos[:7]) if p],
-            "nota": max(1, min(10, int(out.get("nota")))),
+            "nota": nota,
             "disponible": out.get("disponible") is True or str(out.get("disponible")).lower() == "true",
             "firmwares": _limpio(out.get("firmwares"), 40),
             "angulo": _limpio(idea.get("gancho") or out.get("angulo"), 200),
@@ -87,11 +154,11 @@ def enriquecer(n, e, conf, ctx, readme=""):
         ctx["ia_fallos_ronda"] = ctx.get("ia_fallos_ronda", 0) + 1
         e.setdefault("ia", {})
         e["ia"]["fallos"] = e["ia"].get("fallos", 0) + 1
-        # Solo el tipo de error: el estado y los logs son públicos (nada de hostnames)
-        motivo = str(ex) if isinstance(ex, ValueError) and str(ex).startswith(("HTTP", "URLError")) \
-            else type(ex).__name__
-        e["ia"]["ultimo_error"] = motivo[:60]
-        print(f"[ia] sin respuesta útil: {motivo[:60]}")
+        # Solo motivos propios o el tipo de error: el estado y los logs son públicos
+        motivo = str(ex) if isinstance(ex, FalloIA) else type(ex).__name__
+        e["ia"]["ultimo_error"] = motivo[:120]
+        n["ia_motivo"] = motivo[:120]
+        print(f"[ia] sin respuesta útil: {motivo[:120]}")
         return None
 
 

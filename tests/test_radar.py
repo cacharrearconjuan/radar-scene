@@ -193,7 +193,7 @@ class TestRondas(Base):
         self.assertNotIn("Translations", juntos)
         self.assertNotIn("Y2JB-1.3.0", juntos, "los borradores no cuentan")
         self.assertNotIn("typo", juntos)
-        self.assertIn("(sin IA)", juntos, "la IA está caída y los avisos salen igual")
+        self.assertIn("(sin IA", juntos, "la IA está caída y los avisos salen igual")
         # wololo confirma etaHEN en vez de repetir aviso
         self.assertEqual(sum("etaHEN 2.6b" in t for t in textos), 1)
         self.assertIn("Lo confirma: wololo.net", juntos)
@@ -557,3 +557,28 @@ class TestVerificacion(unittest.TestCase):
                   "PS5 jailbreak, see writeup for details", "Does not work after 2.70"]:
             self.assertIsNone(reglas.RE_PROMESA.search(d), d)
         self.assertTrue(reglas.RE_PROMESA.search("PS5 jailbreak 14.30 coming soon, star to get notified"))
+
+
+class TestIA(Base):
+    def test_review_lenta_tira_de_auto(self):
+        self.ronda()
+        self.m.ia = "review_lenta"
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.ronda()
+        self.assertEqual(self.m.modelos_pedidos[:2], ["review", "auto"])
+        t = self.m.tg.del_bot[-1]["texto"]
+        self.assertIn("Idea de vídeo", t)
+
+    def test_motivo_visible_si_falla(self):
+        self.ronda()
+        self.m.ia = "caida"
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.ronda()
+        t = self.m.tg.del_bot[-1]["texto"]
+        self.assertIn("sin IA: review: sin conexión con super-ia; auto: sin conexión", t)
+        self.assertNotIn("ejemplo", t)
+
+    def test_json_con_adornos(self):
+        from radar import ia as IA
+        self.assertEqual(IA._extraer_json('```json\n{"nota": 7, "resumen": "a\nb"}\n```')["nota"], 7)
+        self.assertIsNone(IA._extraer_json('{"nota": 7, "resumen": "cort'))

@@ -22,7 +22,9 @@
   "ia": {
     "activa": true,
     "modelo": "review",
-    "timeout": 45
+    "timeout": 100,
+    "respaldo": "auto",
+    "timeout_respaldo": 50
   },
   "sony": [
     "https://www.playstation.com/es-es/support/hardware/ps5/system-software-info/",

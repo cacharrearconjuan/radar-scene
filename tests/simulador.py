@@ -97,8 +97,11 @@ class Mundo:
             return self.tg.manejar(metodo, datos)
         if "chat/completions" in url:
             self.ia_llamadas += 1
+            self.modelos_pedidos = getattr(self, "modelos_pedidos", []) + [datos.get("model")]
             if self.ia == "caida":
                 return red.Resp(0, error="URLError: timed out")
+            if self.ia == "review_lenta" and datos.get("model") == "review":
+                return red.Resp(0, error="TimeoutError")
             contenido = datos["messages"][1]["content"]
             disp = self.ia != "dice_no"
             self.ultimo_prompt = contenido

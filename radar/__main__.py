@@ -18,7 +18,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMPOS_GUARDADOS = ("clave", "tipo", "repo", "repo_cfg", "titulo", "tag", "url", "ts", "nota", "nivel",
                     "estado_txt", "fw", "fw_ia", "resumen", "angulo", "competencia", "razones",
                     "sin_ia", "confirmado_por", "sin_verificar", "fw_nuevo", "fw_previo", "alias",
-                    "para_que", "idea_titulo", "pasos")
+                    "para_que", "idea_titulo", "pasos", "ia_motivo")
 
 
 def cargar_conf():
@@ -308,7 +308,7 @@ def evaluar(novedades, e, cfg, conf, ctx):
             if n["nivel"] == "descartado":
                 continue
             # IA (solo lo que ya promete)
-            if n["nota"] >= 6 and llamadas_ia < 4:
+            if n["nota"] >= 6 and llamadas_ia < 3:
                 llamadas_ia += 1
                 res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
                 if not ia.combinar(n, res, conf["umbral_fuego"]):
@@ -594,8 +594,9 @@ def modo_diagnostico(e, cfg, conf, ruta):
     if os.environ.get("SUPER_IA_URL"):
         n = {"tipo": "release", "repo": "prueba", "titulo": "Prueba", "tag": "1.0", "texto": "Prueba"}
         tmp = {"ia": {"fallos": 0}, "ronda": 1}
+        t0 = time.time()
         res = ia.enriquecer(n, tmp, conf, {})
-        p("super-ia", bool(res), "" if res else
+        p("super-ia", bool(res), f"responde en {int(time.time() - t0)} s" if res else
           f"no responde ({tmp['ia'].get('ultimo_error', '')}); los avisos saldrán sin IA")
     else:
         p("super-ia", False, "falta el secreto SUPER_IA_URL (los avisos saldrán sin IA)")

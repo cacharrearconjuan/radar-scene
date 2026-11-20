@@ -63,7 +63,7 @@ def aviso(n, prueba=False):
     if n.get("razones"):
         lin.append("<i>Por qué: " + escape("; ".join(n["razones"][:3])) + "</i>")
     if n.get("sin_ia"):
-        lin.append("<i>(sin IA)</i>")
+        lin.append(f"<i>(sin IA: {escape(n['ia_motivo'])})</i>" if n.get("ia_motivo") else "<i>(sin IA)</i>")
     return "\n".join(lin)
 
 
