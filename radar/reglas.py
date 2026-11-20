@@ -80,6 +80,9 @@ def disponible(n):
     if t == "firmware_sony":
         return True, "firmware oficial publicado"
     if t == "repo_nuevo":
+        if RE_PRENSA_NO.search(f"{n.get('titulo', '')} {n.get('texto', '')}") or \
+                re.search(r"star (this|to)|notif(y|ied)|coming soon|soon", str(n.get("texto", "")), re.I):
+            return False, "repo que solo promete"
         return True, "código publicado (repo nuevo)"
     if t == "articulo":
         tit = n.get("titulo", "")
@@ -123,14 +126,18 @@ def puntuar(n, e, conf):
 
     if t == "repo_nuevo":
         u = n.get("umbral", 50)
+        estrellas = n.get("estrellas", 0)
         nota = 9 if u >= 1000 else 8 if u >= 200 else 6
-        raz.append(f"repo nuevo con {n.get('estrellas')}★")
+        raz.append(f"repo nuevo con {estrellas}★")
         if fw.max > expl_max:
-            if n.get("estrellas", 0) >= 50:
+            raz.insert(0, f"dice soportar {firmware.fmt(fw.max)} (por encima de lo conocido)")
+            if estrellas >= 1000:
                 nota = 10
-                raz.insert(0, f"dice soportar {firmware.fmt(fw.max)} (por encima de lo conocido)")
             else:
-                n["sin_verificar"] = True
+                nota = min(max(nota, 7), 8)      # las estrellas se compran: sin verificar
+        if estrellas < 1000:
+            nota = min(nota, 8)
+            n["sin_verificar"] = True
         return _fin(n, nota, raz)
 
     base = {"A": 7, "B": 5}.get(tier, 4)
@@ -168,9 +175,14 @@ def puntuar(n, e, conf):
     elif t == "readme":
         nota = 6
 
-    fuertes = len(set(m.group(0).lower() for m in RE_FUERTE.finditer(texto)))
+    propios = " ".join([str(n.get("repo") or "")] + [str(a) for a in n.get("alias") or []]).lower()
+    utiles = [n.get("titulo", "")] + [l for l in str(n.get("texto", "")).splitlines()
+                                      if RE_FEAT.search(l) and not RE_FIX.match(l.strip(" -*•\t"))]
+    fuertes = {m.group(0).lower() for l in utiles for m in RE_FUERTE.finditer(l)} - \
+        {w for w in ("exploit", "kernel", "jailbreak", "hen", "hypervisor", "linux", "backport", "emulat",
+                     "jit", "userland", "kexp", "kstuff", "debug settings") if w in propios}
     if fuertes and t != "articulo":
-        nota += min(2, fuertes)
+        nota += min(2, len(fuertes))
         raz.append("exploit/HEN/kernel")
 
     fiable = t == "release" or (t == "readme" and n.get("nucleo"))
@@ -196,9 +208,20 @@ def puntuar(n, e, conf):
         nota = min(nota, 5 if tier == "A" else 4)
         raz.append("solo arreglos")
 
+    if t == "commit":
+        nota = min(nota, 8)              # un push no es una versión: nunca 🔥 por sí solo
     if t == "articulo":
         nota = min(max(nota, 6), 7)
         raz.append(f"publicado en {n.get('medio', 'prensa')}")
+        # Exploit nuevo que solo llega por prensa fiable, con descarga y para un firmware
+        # por encima de lo conocido: 🔥 (no mueve el listón de lo explotable)
+        tit = n.get("titulo", "")
+        fw_t = firmware.extraer(tit, techo=sony_max + 100)
+        if n.get("enlace_descarga") and re.search(r"exploit|jailbreak|kernel|\bhen\b", tit, re.I) \
+                and fw_t.max > expl_max:
+            nota = 9
+            n["sin_verificar"] = True
+            raz.insert(0, f"exploit para {firmware.fmt(fw_t.max)} con descarga, según {n.get('medio', 'prensa')}")
     return _fin(n, nota, raz)
 
 

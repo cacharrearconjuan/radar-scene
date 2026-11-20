@@ -59,7 +59,8 @@ def podar(e, ahora=None):
     if len(v) > 1500:
         v = dict(sorted(v.items(), key=lambda kv: kv[1])[-1500:])
     e["vistos"] = v
-    e["pendientes"] = e["pendientes"][-60:]
+    if len(e["pendientes"]) > 60:
+        e["pendientes"] = sorted(e["pendientes"], key=lambda x: (x.get("nota", 0), x.get("ts", 0)))[-60:]
     e["cola"] = e["cola"][-20:]
     e["enviados"] = e["enviados"][-200:]
     e["yt"]["videos"] = [x for x in e["yt"]["videos"] if ahora - x.get("ts", 0) < 14 * 86400][-300:]

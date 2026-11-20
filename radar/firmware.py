@@ -60,6 +60,8 @@ RE_NEGATIVO = re.compile(
     r"\bnot\b|n't\b|\bno\b|\bunsupported|\bdo not update|\bavoid\b|\bbeyond\b|\bwip\b|\btodo\b|"
     r"\bsoon\b|\bplanned\b|\bcoming\b|\bfuture\b|\bblocked\b|\bpatch(?:ed|es)\b|\bfixed in\b|"
     r"\bwill\b|\bnot yet\b|\btest(?:ing)?\b|\bexperimental\b|\bpartial\b|"
+    r"\bremoved?\b|\bdropp(?:ed|ing)\b|\brequires?\b|\brequired\b|\bbroken\b|\bunstable\b|"
+    r"\bdeprecated\b|❌|✗|✖|🚫|⛔|"
     r"\bno (?:es|está) compatible|\bsin soporte|\bno funciona|\bno actualic", re.I)
 RE_PS4 = re.compile(r"\bps4\b|orbis", re.I)
 RE_PS5 = re.compile(r"\bps5\b|prospero", re.I)

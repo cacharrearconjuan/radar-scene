@@ -67,7 +67,9 @@ class TestFirmware(unittest.TestCase):
             "Supported firmware: 7.00 through 13.60.": "7.00 – 13.60",
             "- Supports PS5 firmware 1.00-5.50": "1.00 – 5.50",
             "**Firmware 4.03 – 12.40** →": "4.03 – 12.40",
-            "Poopsploit payload requires 12.00 or lower firmware PS5": "12.00",
+            "Poopsploit payload requires 12.00 or lower firmware PS5": "",   # «requires»: prudente
+            "Removed support for firmware 14.00": "",
+            "| PS5 14.00 | ❌ |": "",
             "IP 192.168.1.100": "",
             "kstuff-lite v1.11 released": "",
             "Experimental support for FW 14.00 and 14.10.": "14.00 – 14.10",
@@ -175,13 +177,16 @@ class TestRondas(Base):
         self.m.wololo = feed
 
         e = self.ronda()
+        self.assertEqual(e["fw"]["explotable_max"], 1410, "los repos nuevos no mueven el listón")
         textos = [m["texto"] for m in self.m.tg.del_bot]
         juntos = "\n".join(textos)
         print("\n---- AVISOS ----\n" + "\n=====\n".join(textos))
         self.assertIn("14.30", juntos, "firmware nuevo de Sony")
         self.assertIn("etaHEN", juntos, "etaHEN 2.6b es de un repo clave")
         self.assertIn("kstuff", juntos, "kstuff con firmware 14.10")
-        self.assertIn("PS5-Kernel-Exploit-1422", juntos, "repo nuevo con 640 estrellas")
+        self.assertNotIn("PS5-Kernel-Exploit-1422", juntos, "640★ se pueden comprar: no es 🔥")
+        nuevo = [p for p in e["pendientes"] if "PS5-Kernel-Exploit-1422" in p["titulo"]]
+        self.assertTrue(nuevo and nuevo[0].get("sin_verificar"), "va al resumen, sin verificar")
         self.assertNotIn("faker", juntos)
         self.assertNotIn("ps5-theme", juntos)
         self.assertNotIn("teases", juntos)
@@ -370,7 +375,7 @@ class TestRevision(Base):
 
         def manejar(metodo, datos):
             if metodo == "sendMessage" and "malo" in datos["text"]:
-                return red.Resp(400, json.dumps({"ok": False, "description": "Bad Request: chat not found x"}).encode())
+                return red.Resp(400, json.dumps({"ok": False, "description": "Bad Request: BUTTON_URL_INVALID"}).encode())
             return orig(metodo, datos)
         self.m.tg.manejar = manejar
         e = self.ronda()
@@ -434,3 +439,92 @@ class TestRevision(Base):
         e = self.ronda()
         todo = "\n".join(m["texto"] for m in self.m.tg.del_bot) + json.dumps(e["pendientes"])
         self.assertIn("v1.0.1", todo)
+
+
+class TestRevision2(Base):
+    def avisos(self, palabra):
+        return sum(palabra in m["texto"] for m in self.m.tg.del_bot)
+
+    def test_rotacion_por_tiers(self):
+        with mock.patch.dict(os.environ, {"RADAR_TODO": ""}):
+            self.ronda()                      # ronda 1 (siembra: todo)
+            self.m.peticiones.clear()
+            self.ronda()                      # ronda 2: A sí, B no
+        pide = "\n".join(self.m.peticiones)
+        self.assertIn("etaHEN/etaHEN/releases", pide)
+        self.assertNotIn("LightningMods/Itemzflow/releases", pide)
+        self.assertNotIn("playstation.com", pide)
+
+    def test_ia_no_tumba_tus_repos_ni_baja_un_fuego(self):
+        self.ronda()
+        self.m.ia = "ok"
+        orig = self.m.__class__.__call__
+
+        def llamar(slf, url, cab, datos):
+            if "chat/completions" in url:
+                out = {"resumen": "r", "nota": 3, "disponible": True, "firmwares": "", "angulo": "a",
+                       "es_juego": True}
+                return red.Resp(200, json.dumps({"choices": [{"message": {"content": json.dumps(out)}}]}).encode())
+            return orig(slf, url, cab, datos)
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        with mock.patch.object(self.m.__class__, "__call__", llamar):
+            self.ronda()
+        self.assertEqual(self.avisos("etaHEN"), 1)
+
+    def test_commits_no_inundan(self):
+        self.ronda()
+        for i in range(4):
+            self.m.commits["ntfargo/Relapse-Exploit"].insert(0, {"sha": f"s{i}", "html_url": "u", "commit": {
+                "message": f"Add new feature {i}", "committer": {"date": iso(0.1)}}})
+            e = self.ronda()
+        self.assertEqual(sum("Relapse" in p.get("repo", "") for p in e["pendientes"]), 1)
+
+    def test_repo_nuevo_que_solo_promete(self):
+        self.ronda()
+        self.m.search = {"items": [{"full_name": "faker/PS5-Jailbreak-1430", "html_url": "x",
+                                    "description": "PS5 jailbreak 14.30 coming soon, star to get notified",
+                                    "stargazers_count": 300, "fork": False, "size": 30, "created_at": iso(3)}]}
+        e = self.ronda()
+        self.assertFalse(any("faker" in p["titulo"] for p in e["pendientes"]))
+        self.assertEqual(self.avisos("faker"), 0)
+
+    def test_exploit_solo_por_prensa_es_fuego(self):
+        self.ronda()
+        self.m.wololo = ("<rss><channel><item><title>PS5: Kernel exploit for firmware 14.20 released</title>"
+                         "<link>https://wololo.net/z</link><pubDate>" +
+                         time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime()) + "</pubDate>"
+                         "<description><![CDATA[Download: https://github.com/dev/k1420/releases/tag/v1]]></description>"
+                         "</item></channel></rss>")
+        e = self.ronda()
+        self.assertEqual(self.avisos("14.20"), 1)
+        self.assertEqual(e["fw"]["explotable_max"], 1360, "la prensa no mueve el listón")
+
+    def test_resumen_congelado(self):
+        self.ronda()
+        e = estado.cargar(self.ruta)
+        e["pendientes"] = [{"clave": f"k{i}", "tipo": "release", "repo": f"github.com:a/r{i}",
+                            "titulo": f"Herramienta {i} " + "x" * 300, "nota": 5, "nivel": "menor",
+                            "url": "https://github.com/a/b", "ts": 0} for i in range(15)]
+        estado.guardar(e, self.ruta)
+        self.m.tg.fallos = ["ok", "conexion", "conexion", "conexion", "conexion"]
+        radar.main(["resumen", "--estado", self.ruta])
+        e = estado.cargar(self.ruta)
+        e["pendientes"].append({"clave": "top", "tipo": "release", "repo": "github.com:a/top", "titulo": "TOPNUEVO",
+                                "nota": 8, "nivel": "interesante", "url": "u", "ts": 0})
+        estado.guardar(e, self.ruta)
+        radar.main(["resumen", "--estado", self.ruta])     # termina el congelado
+        e = estado.cargar(self.ruta)
+        self.assertTrue(any(p["clave"] == "top" for p in e["pendientes"]), "lo nuevo espera al siguiente")
+        todos = "\n".join(m["texto"] for m in self.m.tg.del_bot)
+        for i in range(15):
+            self.assertIn(f"Herramienta {i} ", todos)
+
+    def test_ya_llego_tras_un_mensaje_de_prueba(self):
+        self.ronda()
+        radar.main(["prueba", "--estado", self.ruta])    # no guarda estado ni lleva botón
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.m.tg.fallos = ["timeout_llega"]
+        self.ronda()
+        self.assertEqual(sum("etaHEN 3.0" in m["texto"] for m in self.m.tg.del_bot), 1)
+        prueba = [m for m in self.m.tg.del_bot if "PRUEBA" in m["texto"]][0]
+        self.assertIn(prueba["markup"], (None, {"inline_keyboard": []}))

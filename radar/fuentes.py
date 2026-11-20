@@ -213,6 +213,8 @@ def commits(e, clave, info, ctx):
     r = red.pedir(_url_api(clave, "commits"), etag=st.get("etag_com"))
     if r.status == 304 or not r.ok:
         if not r.ok and r.status != 304:
+            if r.status in (403, 429) and clave.startswith("github.com:"):
+                ctx["limite_github"] = True
             salud(e, "github", False, f"{clave} commits {r.status}")
         return []
     try:
@@ -239,7 +241,8 @@ def commits(e, clave, info, ctx):
         [int(time.time())] * len(nuevos)
     if not utiles and len(st["commits_24h"]) < 10:
         return []
-    ts = max(iso_ts(((c.get("commit") or {}).get("author") or {}).get("date")) for c in nuevos)
+    ts = max(iso_ts(((c.get("commit") or {}).get("committer") or {}).get("date")
+                    or ((c.get("commit") or {}).get("author") or {}).get("date")) for c in nuevos)
     primera = mensajes[0].splitlines()[0][:120] if mensajes else ""
     return [{
         "tipo": "commit", "repo": clave, "repo_cfg": clave,
@@ -419,13 +422,15 @@ def _tiene_codigo(clave):
 # ------------------------------------------------------------ Sony
 def sony(e, conf, ctx):
     st = e["feeds"].setdefault("sony", {})
-    versiones, error = [], ""
-    for url in conf["sony"]:
-        r = red.pedir(url, timeout=20)
-        versiones = firmware.sony(r.texto) if r.ok else []
-        if versiones:
-            break
-        error = f"{url} {r.status} {r.error}"
+    versiones, error, url = [], "", conf["sony"][0]
+    for u in conf["sony"]:                      # la de cualquier país que vaya por delante
+        r = red.pedir(u, timeout=20)
+        vs = firmware.sony(r.texto) if r.ok else []
+        if vs and max(vs) > max(versiones or [0]):
+            url = u
+        versiones += vs
+        if not vs:
+            error = f"{u} {r.status} {r.error}"
     if not versiones:
         salud(e, "sony", False, error or "sin versiones en la página")
         return []

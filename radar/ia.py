@@ -88,20 +88,23 @@ def _limpio(s, n):
     return s[:n]
 
 
-def combinar(n, ia):
+def combinar(n, ia, umbral_fuego=9):
     """Aplica la IA con límites. Devuelve False si hay que descartar la novedad."""
     if not ia:
         n["sin_ia"] = True
         return True
     duro = n["tipo"] in ("release", "commit", "readme", "repo_nuevo", "firmware_sony")
-    if ia["es_juego"] and n["tipo"] != "firmware_sony":
-        return False
+    configurado = n.get("tier") in ("A", "B")
+    if ia["es_juego"] and n["tipo"] != "firmware_sony" and not (duro and configurado):
+        return False             # en tus repos configurados la IA no tumba nada
     if not duro and not ia["disponible"]:
         return False
     if duro and not ia["disponible"]:
         print(f"[ia] dice que no está disponible, pero es una release real: {n.get('url')}")
     reglas = n["nota"]
     nota = max(reglas - 2, min(reglas + 1, ia["nota"]))
+    if reglas >= umbral_fuego:
+        nota = max(nota, reglas)  # la IA no puede quitarle el 🔥 a lo que ya lo tenía
     if not duro:
         nota = min(nota, 8)
     n["nota"] = nota

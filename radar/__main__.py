@@ -60,8 +60,8 @@ def clave_novedad(n):
 class Equivalencias:
     """Agrupa los nombres de un mismo repo (config, renombrado, descubierto)."""
 
-    def __init__(self, e, cfg):
-        self.e, self.cfg = e, cfg
+    def __init__(self, e, cfg, ctx=None):
+        self.e, self.cfg, self.ctx = e, cfg, (ctx if ctx is not None else {})
         self.grupo = {}
         for c in cfg["repos"]:
             self._unir(norm(c), norm(c))
@@ -93,7 +93,13 @@ class Equivalencias:
             return self.de(k)
         ren = self.e.setdefault("renombres", {})
         if k not in ren:
+            if self.ctx.get("limite_github"):
+                return k
             r = red.pedir(f"{fuentes.API}/repos/{clave.split(':', 1)[1]}")
+            if r.status in (403, 429):
+                self.ctx["limite_github"] = True
+            if r.status not in (200, 404):
+                return k                         # se vuelve a intentar otro día
             try:
                 ren[k] = norm("github.com:" + r.json()["full_name"]) if r.ok else k
             except (ValueError, KeyError, TypeError):
@@ -216,7 +222,7 @@ def _descarga_reciente(n, e, eq):
 def evaluar(novedades, e, cfg, conf, ctx):
     """Devuelve (para_enviar_ya, para_resumen)."""
     ahora = time.time()
-    eq = Equivalencias(e, cfg)
+    eq = Equivalencias(e, cfg, ctx)
     candidatas = []
     for n in novedades:
         try:
@@ -304,7 +310,7 @@ def evaluar(novedades, e, cfg, conf, ctx):
             if n["nota"] >= 6 and llamadas_ia < 6:
                 llamadas_ia += 1
                 res = ia.enriquecer(n, e, conf, ctx)
-                if not ia.combinar(n, res):
+                if not ia.combinar(n, res, conf["umbral_fuego"]):
                     print(f"[ia] descartado por la IA (no disponible o de juegos): {n.get('titulo')}")
                     continue
                 n["nivel"] = reglas.nivel(n["nota"], conf)
@@ -364,8 +370,8 @@ def _actualizar_fw(n, e, cfg, conf):
     st["fw_max"] = max(st.get("fw_max", 0), fwmax)
     if n.get("sin_verificar"):
         return
-    fiable = (n.get("tier") == "A" and (n["tipo"] == "release" or (n["tipo"] == "readme" and n.get("nucleo")))) \
-        or (n["tipo"] == "repo_nuevo" and n.get("estrellas", 0) >= 50)
+    # Solo releases de repos clave (o el README de un repo núcleo) mueven el listón
+    fiable = n.get("tier") == "A" and (n["tipo"] == "release" or (n["tipo"] == "readme" and n.get("nucleo")))
     if fiable and fwmax <= e["fw"].get("sony_max", 9999):
         e["fw"]["explotable_max"] = max(e["fw"].get("explotable_max", 0), fwmax)
 
@@ -382,7 +388,16 @@ def compacto(n):
 def enviar_cola(e, conf, ruta):
     guardar = guardar_fn(e, ruta)
     rec = telegram.recuperar_en_curso(e)
-    if rec and rec[1]:
+    if rec and rec[1] and str(rec[0]).startswith("resumen:"):
+        c = e["resumen"].get("congelado")
+        try:
+            num = int(str(rec[0]).rsplit(":", 1)[1])
+            if c and c.get("dia") == str(rec[0]).split(":")[1]:
+                c["enviados"] = max(c.get("enviados", 0), num + 1)
+        except (ValueError, IndexError):
+            pass
+        guardar()
+    elif rec and rec[1]:
         hecho = next((x for x in e["cola"] if x.get("clave") == rec[0]), {"clave": rec[0]})
         e["cola"] = [x for x in e["cola"] if x.get("clave") != rec[0]]
         _apuntar_enviado(e, hecho, rec[1])
@@ -425,37 +440,40 @@ def toca_resumen(e, conf, forzar=False):
 
 
 def enviar_resumen(e, cfg, conf, ruta, forzar=False):
-    if not toca_resumen(e, conf, forzar):
+    if not toca_resumen(e, conf, forzar) and not e["resumen"].get("congelado"):
         return
     dia = ahora_local(conf).strftime("%Y-%m-%d")
-    items = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))
-    if not items:
-        e["resumen"]["ultimo_dia"] = dia
-        return
-    try:                               # competencia al día justo antes de enviar
-        competencia.refrescar(cfg, e)
-        for x in items:
-            x["competencia"] = competencia.linea(x, e)
-    except Exception as ex:
-        print(f"[youtube] {type(ex).__name__}")
-    extra = max(0, len(items) - 15)
-    trozos = formato.trocear(formato.resumen(items[:15], conf["zona"], extra))
     r = e["resumen"]
-    if r.get("dia_trozos") != dia:
-        r["dia_trozos"], r["trozos_enviados"] = dia, 0
-    for i, trozo in enumerate(trozos):
-        if i < r.get("trozos_enviados", 0):
+    if not r.get("congelado"):
+        items = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))[:40]
+        if not items:
+            r["ultimo_dia"] = dia
+            return
+        try:                               # competencia al día justo antes de enviar
+            competencia.refrescar(cfg, e)
+            for x in items:
+                x["competencia"] = competencia.linea(x, e)
+        except Exception as ex:
+            print(f"[youtube] {type(ex).__name__}")
+        # Se congela: los trozos no cambian aunque entren novedades a mitad de envío
+        claves = {x.get("clave") for x in items}
+        e["pendientes"] = [x for x in e["pendientes"] if x.get("clave") not in claves]
+        trozos = formato.trocear(formato.resumen(items, conf["zona"]))
+        r["congelado"] = {"dia": dia, "trozos": trozos, "enviados": 0,
+                          "url": items[0].get("url") or "https://github.com"}
+        estado.guardar(e, ruta)
+    c = r["congelado"]
+    for i, trozo in enumerate(c["trozos"]):
+        if i < c["enviados"]:
             continue                    # ya salió en una ronda anterior
-        url = items[0].get("url") or "https://github.com"
-        boton = telegram.boton(url, f"🗞️ Resumen {i + 1}/{len(trozos)} · {dia}")
-        mid = telegram.enviar(e, trozo, boton, guardar=guardar_fn(e, ruta), clave=f"resumen:{dia}:{i}")
+        boton = telegram.boton(c["url"], f"🗞️ Resumen {i + 1}/{len(c['trozos'])} · {c['dia']}")
+        mid = telegram.enviar(e, trozo, boton, guardar=guardar_fn(e, ruta), clave=f"resumen:{c['dia']}:{i}")
         if mid is None and telegram._token():
             return                      # se reintenta en la próxima ronda
-        r["trozos_enviados"] = i + 1
+        c["enviados"] = i + 1
         estado.guardar(e, ruta)
-    e["pendientes"] = []
+    r.pop("congelado", None)
     r["ultimo_dia"] = dia
-    r["trozos_enviados"] = 0
     estado.guardar(e, ruta)
 
 
@@ -495,6 +513,10 @@ def modo_ronda(e, cfg, conf, ruta):
         e["cola"].append(compacto(n))
     for n in resumen:
         e["pendientes"].append(compacto(n))
+        if n["tipo"] in ("commit", "readme"):
+            st = e["repos"].get(norm(n.get("repo_cfg") or ""))
+            if st is not None:
+                st["ult_aviso"] = int(time.time())
     for n in ya + resumen:
         print(f"[{n['nivel']}] {n['nota']}/10 {n['titulo']} ({n['repo']}) {n.get('razones')}")
     estado.guardar(e, ruta)
@@ -520,7 +542,7 @@ def modo_prueba(e, cfg, conf, ruta):
     except Exception as ex:
         print(f"[youtube] {type(ex).__name__}")
     n["competencia"] = competencia.linea(n, e)
-    mid = telegram.enviar(e, formato.aviso(n, prueba=True), telegram.boton(n["url"]), registrar=False)
+    mid = telegram.enviar(e, formato.aviso(n, prueba=True), None, registrar=False)
     print("enviado" if mid else "NO enviado", "| IA:", "sí" if res else f"no ({e['ia'].get('ultimo_error')})")
 
 
