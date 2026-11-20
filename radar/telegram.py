@@ -41,7 +41,7 @@ def boton(url, texto="🔗 Abrir"):
     return {"inline_keyboard": [[{"text": texto, "url": url}]]}
 
 
-def ya_llego(e, markup, limite=30):
+def ya_llego(e, markup, limite=60):
     ultimo = int(e["tg"].get("ultimo_msg_id") or 0)
     if not ultimo:
         return None
@@ -63,8 +63,12 @@ def ya_llego(e, markup, limite=30):
     return None
 
 
-def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None):
-    """Devuelve el message_id o None."""
+PERMANENTE = -1
+
+
+def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None, registrar=True):
+    """Devuelve el message_id, None (fallo pasajero: reintentar más tarde) o
+    PERMANENTE (Telegram lo rechaza siempre: no insistir)."""
     if not _token() or not _chat():
         print("[tg] faltan TELEGRAM_TOKEN o TELEGRAM_CHAT_ID; mensaje:\n" + texto)
         return None
@@ -72,20 +76,27 @@ def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None):
              "disable_web_page_preview": True}
     if markup:
         datos["reply_markup"] = markup
-    e["tg"]["en_curso"] = {"markup": markup, "clave": clave, "ts": int(time.time())} if markup else None
-    if guardar:
-        guardar()
+    if registrar and markup:
+        e["tg"]["en_curso"] = {"markup": markup, "clave": clave, "ts": int(time.time())}
+        if guardar:
+            guardar()
+    quitado_boton = False
     for intento in range(intentos):
         r, j = llamar("sendMessage", datos)
         if j.get("ok"):
-            return _hecho(e, j["result"]["message_id"], guardar)
+            return _hecho(e, j["result"]["message_id"], guardar, registrar)
         if r.status == 429:
             espera = min(60, int((j.get("parameters") or {}).get("retry_after", 5)))
             time.sleep(espera + 1)
             continue
-        if r.status == 400 and "parse" in (j.get("description") or "").lower():
+        desc = (j.get("description") or "").lower()
+        if r.status == 400 and "parse" in desc and datos.get("parse_mode"):
             datos["text"] = re.sub(r"<[^>]+>", "", texto)
             datos.pop("parse_mode", None)
+            continue
+        if r.status == 400 and ("button" in desc or "reply markup" in desc) and not quitado_boton:
+            datos.pop("reply_markup", None)
+            quitado_boton = True
             continue
         if _no_llego(r) or r.status >= 500:
             time.sleep(5 * (intento + 1))
@@ -95,19 +106,24 @@ def enviar(e, texto, markup=None, intentos=4, guardar=None, clave=None):
                 mid = ya_llego(e, markup)
                 if mid:
                     print(f"[tg] ya había llegado (mensaje {mid}); no se repite")
-                    return _hecho(e, mid, guardar)
+                    return _hecho(e, mid, guardar, registrar)
                 time.sleep(5)
                 continue
             print("[tg] sin respuesta y sin forma de comprobarlo; no se reintenta para no duplicar")
             return None
         print(f"[tg] error {r.status}: {j.get('description') or r.error}")
-        return None
+        if 400 <= r.status < 500 and r.status not in (401, 403, 404):
+            if registrar:
+                e["tg"]["en_curso"] = None
+            return PERMANENTE      # el mensaje en sí no vale: no bloquear la cola
+        return None                # token/chat mal o caído: reintentar más tarde
     return None
 
 
-def _hecho(e, mid, guardar):
+def _hecho(e, mid, guardar, registrar=True):
     e["tg"]["ultimo_msg_id"] = max(int(e["tg"].get("ultimo_msg_id") or 0), int(mid))
-    e["tg"]["en_curso"] = None
+    if registrar:
+        e["tg"]["en_curso"] = None
     if guardar:
         guardar()
     return mid

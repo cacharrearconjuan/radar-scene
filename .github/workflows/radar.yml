@@ -14,8 +14,10 @@ on:
 permissions:
   contents: write
 
+# Las rondas no se solapan. «prueba» y «diagnostico» van aparte (no tocan el estado),
+# para que una ronda de cron-job.org no cancele una prueba manual en espera.
 concurrency:
-  group: radar
+  group: ${{ (inputs.modo == 'prueba' || inputs.modo == 'diagnostico') && 'radar-manual' || 'radar' }}
   cancel-in-progress: false
 
 jobs:
@@ -36,17 +38,25 @@ jobs:
       - name: Traer el estado (rama «estado»)
         run: |
           REMOTO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --heads "$REMOTO" estado >/dev/null 2>&1; then
+          set +e
+          git ls-remote --exit-code --heads "$REMOTO" estado >/dev/null 2>&1
+          codigo=$?
+          set -e
+          if [ "$codigo" = 0 ]; then
             git clone -q --depth 1 --branch estado "$REMOTO" _estado
-          else
+          elif [ "$codigo" = 2 ]; then
+            echo "No hay rama «estado»: se empieza de cero"
             mkdir -p _estado && git -C _estado init -q -b estado && git -C _estado remote add origin "$REMOTO"
+          else
+            echo "::error::No se pudo leer la rama «estado» (código $codigo). No sigo para no perder el estado."
+            exit 1
           fi
 
       - name: Radar
         run: python3 -m radar "$MODO" --estado _estado/estado.json
 
       - name: Guardar el estado
-        if: always()
+        if: always() && env.MODO != 'prueba' && env.MODO != 'diagnostico'
         run: |
           cd _estado
           [ -f estado.json ] || exit 0
@@ -59,4 +69,10 @@ jobs:
           else
             git commit -q -m "estado"
           fi
-          git push -q -f origin estado
+          for i in 1 2 3 4 5; do
+            git push -q -f origin estado && exit 0
+            echo "push falló (intento $i); reintento"
+            sleep $((i * 5))
+          done
+          echo "::error::No se pudo guardar el estado"
+          exit 1

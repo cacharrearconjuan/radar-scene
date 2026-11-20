@@ -43,37 +43,43 @@ def disponible_ia(e, conf):
 
 
 def enriquecer(n, e, conf, ctx):
-    if ctx.get("ia_fallos_ronda", 0) >= 2 or not disponible_ia(e, conf):
-        return None
-    contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n['tipo']}\nTítulo: {n.get('titulo')}\n"
-                 f"Versión: {n.get('tag')}\nTexto:\n{(n.get('texto') or '')[:3000]}")
-    datos = {"model": conf["ia"].get("modelo", "auto"), "temperature": 0.2, "max_tokens": 500,
-             "messages": [{"role": "system", "content": SISTEMA},
-                          {"role": "user", "content": contenido}]}
-    r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
-                  cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
-                  timeout=conf["ia"].get("timeout", 25), metodo="POST")
+    """Nunca lanza excepciones: si algo falla devuelve None y el aviso sale sin IA."""
     try:
+        if ctx.get("ia_fallos_ronda", 0) >= 2 or not disponible_ia(e, conf):
+            return None
+        contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
+                     f"Versión: {n.get('tag')}\nTexto:\n{str(n.get('texto') or '')[:3000]}")
+        datos = {"model": conf["ia"].get("modelo", "auto"), "temperature": 0.2, "max_tokens": 500,
+                 "messages": [{"role": "system", "content": SISTEMA},
+                              {"role": "user", "content": contenido}]}
+        r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
+                      cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
+                      timeout=conf["ia"].get("timeout", 25), metodo="POST")
         if not r.ok:
-            raise ValueError(f"HTTP {r.status} {r.error}")
+            raise ValueError(r.error or f"HTTP {r.status}")
         txt = r.json()["choices"][0]["message"]["content"]
-        m = re.search(r"\{.*\}", txt, re.S)
+        m = re.search(r"\{.*\}", str(txt), re.S)
         out = json.loads(m.group(0))
         res = {
             "resumen": _limpio(out.get("resumen"), 400),
-            "nota": int(out.get("nota")),
-            "disponible": bool(out.get("disponible")),
+            "nota": max(1, min(10, int(out.get("nota")))),
+            "disponible": out.get("disponible") is True or str(out.get("disponible")).lower() == "true",
             "firmwares": _limpio(out.get("firmwares"), 40),
             "angulo": _limpio(out.get("angulo"), 160),
-            "es_juego": bool(out.get("es_juego")),
+            "es_juego": out.get("es_juego") is True or str(out.get("es_juego")).lower() == "true",
         }
         e["ia"]["fallos"] = 0
+        e["ia"].pop("ultimo_error", None)
         return res
     except Exception as ex:
         ctx["ia_fallos_ronda"] = ctx.get("ia_fallos_ronda", 0) + 1
+        e.setdefault("ia", {})
         e["ia"]["fallos"] = e["ia"].get("fallos", 0) + 1
-        e["ia"]["ultimo_error"] = str(ex)[:160]
-        print(f"[ia] sin respuesta útil: {ex}")
+        # Solo el tipo de error: el estado y los logs son públicos (nada de hostnames)
+        motivo = str(ex) if isinstance(ex, ValueError) and str(ex).startswith(("HTTP", "URLError")) \
+            else type(ex).__name__
+        e["ia"]["ultimo_error"] = motivo[:60]
+        print(f"[ia] sin respuesta útil: {motivo[:60]}")
         return None
 
 
@@ -87,8 +93,10 @@ def combinar(n, ia):
     if not ia:
         n["sin_ia"] = True
         return True
-    duro = n["tipo"] in ("release", "commit", "readme", "repo_nuevo", "lista_nueva", "firmware_sony")
-    if not duro and (not ia["disponible"] or ia["es_juego"]):
+    duro = n["tipo"] in ("release", "commit", "readme", "repo_nuevo", "firmware_sony")
+    if ia["es_juego"] and n["tipo"] != "firmware_sony":
+        return False
+    if not duro and not ia["disponible"]:
         return False
     if duro and not ia["disponible"]:
         print(f"[ia] dice que no está disponible, pero es una release real: {n.get('url')}")

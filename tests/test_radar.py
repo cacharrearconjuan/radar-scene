@@ -115,12 +115,18 @@ class TestReglas(unittest.TestCase):
     def test_teasers_fuera(self):
         for t in ["PS5: Gezine teases game dump on firmware 14.22, could lead to jailbreak",
                   "PS5 14.22 jailbreak coming soon?", "Developer shows PS5 Linux progress",
-                  "PS5 kernel exploit announced for 14.10"]:
+                  "PS5 kernel exploit announced for 14.10",
+                  "PS5: kernel exploit for 14.40 to be released next week",
+                  "PS5 14.30 exploit will not be released", "PS5 14.30 exploit: no public release available yet",
+                  "Gezine releases video of 14.50 jailbreak", "PS5 14.22 kernel exploit writeup released, no code yet"]:
             ok, _ = reglas.disponible({"tipo": "articulo", "titulo": t, "repos_enlazados": ["github.com:a/b"]})
             self.assertFalse(ok, t)
         ok, _ = reglas.disponible({"tipo": "articulo", "titulo": "PS5: etaHEN 2.6b released",
-                                   "repos_enlazados": ["github.com:a/b"]})
+                                   "repos_enlazados": ["github.com:a/b"], "descarga": True})
         self.assertTrue(ok)
+        ok, _ = reglas.disponible({"tipo": "articulo", "titulo": "PS5: etaHEN 2.6b released",
+                                   "repos_enlazados": ["github.com:a/b"], "descarga": False})
+        self.assertFalse(ok, "enlazar un repo sin descarga reciente no basta")
         ok, _ = reglas.disponible({"tipo": "articulo", "titulo": "PS5: etaHEN 2.6b released", "repos_enlazados": []})
         self.assertFalse(ok)
 
@@ -281,3 +287,150 @@ class TestSilencio(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRevision(Base):
+    """Regresiones de la revisión independiente."""
+
+    def avisos(self, palabra):
+        return sum(palabra in m["texto"] for m in self.m.tg.del_bot)
+
+    def test_url_ia_sin_https_no_bloquea(self):
+        self.ronda()
+        with mock.patch.dict(os.environ, {"SUPER_IA_URL": "super-ia.ejemplo.ts.net/v1"}):
+            red.FALSO = None              # red real: la URL mala tiene que fallar sin excepción
+            r = red.pedir("super-ia.ejemplo.ts.net/v1/chat/completions", datos={}, metodo="POST")
+            red.FALSO = self.m
+            self.assertEqual(r.status, 0)
+            self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+            self.m.ia = "ok"
+            orig = self.m.__class__.__call__
+
+            def llamar(slf, url, cab, datos):
+                if "chat/completions" in url:
+                    return red.pedir.__wrapped__(url) if hasattr(red.pedir, "__wrapped__") else \
+                        red.Resp(0, error="ValueError")
+                return orig(slf, url, cab, datos)
+            with mock.patch.object(self.m.__class__, "__call__", llamar):
+                e = self.ronda()
+        self.assertEqual(self.avisos("etaHEN"), 1)
+        self.assertEqual(e["ronda"], 2)
+        self.assertNotIn("ejemplo", json.dumps(e), "el hostname de la IA no acaba en el estado público")
+
+    def test_lista_con_version_numerica_y_payload_nuevo(self):
+        self.ronda()
+        self.m.listas_extra = [{"name": "NewKex", "version": 1.2, "source": "https://github.com/dev/newkex/releases",
+                                "description": "PS5 kernel exploit loader"}]
+        self.m.releases["dev/newkex"] = [rel(50, "v1.0", "- Kernel exploit for firmware 13.60", 2, repo="dev/newkex")]
+        e = self.ronda()
+        todo = "\n".join(m["texto"] for m in self.m.tg.del_bot) + json.dumps(e["pendientes"])
+        self.assertIn("newkex", todo.lower())
+        self.assertIn("Payload Manager", todo)
+
+    def test_negacion_no_da_fuego(self):
+        self.ronda()
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "2.5c", "- Fixed crash\n- Firmware 14.00 and above are "
+                                                    "NOT supported yet", 1))
+        e = self.ronda()
+        self.assertEqual(self.avisos("etaHEN"), 0)
+        self.assertEqual(e["fw"]["explotable_max"], 1360)
+
+    def test_repo_nuevo_mayor_de_48h_y_umbrales(self):
+        self.ronda()
+        item = {"full_name": "newdev/PS5-Kernel-Exploit", "html_url": "https://github.com/newdev/PS5-Kernel-Exploit",
+                "description": "PS5 kernel exploit 13.00", "stargazers_count": 60, "fork": False, "size": 800,
+                "created_at": iso(72)}
+        self.m.search = {"items": [dict(item)]}
+        e = self.ronda()
+        self.assertTrue(any("PS5-Kernel-Exploit" in p["titulo"] for p in e["pendientes"]), "⭐ a 60★")
+        self.m.search = {"items": [dict(item, stargazers_count=1500)]}
+        self.ronda()
+        self.assertEqual(self.avisos("PS5-Kernel-Exploit"), 1, "🔥 al pasar de 1.000★")
+
+    def test_repo_solo_con_binario(self):
+        self.ronda()
+        self.m.contenidos["dev/binjb"] = ["README.md", "LICENSE"]
+        self.m.releases["dev/binjb"] = [rel(60, "v1", "jb", 1, repo="dev/binjb")]
+        self.m.search = {"items": [{"full_name": "dev/binjb", "html_url": "https://github.com/dev/binjb",
+                                    "description": "PS5 jailbreak payload", "stargazers_count": 250,
+                                    "fork": False, "size": 10, "created_at": iso(5)}]}
+        e = self.ronda()
+        todo = "\n".join(m["texto"] for m in self.m.tg.del_bot) + json.dumps(e["pendientes"])
+        self.assertIn("dev/binjb", todo)
+
+    def test_error_permanente_no_bloquea_la_cola(self):
+        self.ronda()
+        e = estado.cargar(self.ruta)
+        e["cola"] = [{"clave": "malo", "tipo": "release", "repo": "github.com:a/b", "titulo": "malo", "nota": 10,
+                      "nivel": "fuego", "url": "javascript:alert(1)"},
+                     {"clave": "bueno", "tipo": "release", "repo": "github.com:a/c", "titulo": "kstuff bueno",
+                      "nota": 10, "nivel": "fuego", "url": "https://github.com/a/c"}]
+        estado.guardar(e, self.ruta)
+        orig = self.m.tg.manejar
+
+        def manejar(metodo, datos):
+            if metodo == "sendMessage" and "malo" in datos["text"]:
+                return red.Resp(400, json.dumps({"ok": False, "description": "Bad Request: chat not found x"}).encode())
+            return orig(metodo, datos)
+        self.m.tg.manejar = manejar
+        e = self.ronda()
+        self.assertEqual(self.avisos("kstuff bueno"), 1)
+        self.assertEqual(e["cola"], [])
+
+    def test_articulo_de_algo_nuevo_que_enlaza_etahen(self):
+        self.ronda()
+        e = estado.cargar(self.ruta)
+        e["pendientes"].append({"clave": "github.com:etahen/etahen@2.5c", "tipo": "release",
+                                "repo": "github.com:etaHEN/etaHEN", "repo_cfg": "github.com:etaHEN/etaHEN",
+                                "titulo": "etaHEN 2.5c", "nota": 6, "nivel": "interesante", "alias": ["etaHEN"]})
+        estado.guardar(e, self.ruta)
+        self.m.wololo = ("<rss><channel><item><title>PS5: New kernel exploit released for 13.80</title>"
+                         "<link>https://wololo.net/x</link><pubDate>" +
+                         time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime()) + "</pubDate>"
+                         "<description><![CDATA[Get it at https://github.com/newdev/kexp1380/releases and load it "
+                         "with https://github.com/etaHEN/etaHEN]]></description></item></channel></rss>")
+        e = self.ronda()
+        todo = "\n".join(m["texto"] for m in self.m.tg.del_bot) + json.dumps(e["pendientes"])
+        self.assertIn("13.80", todo)
+        self.assertIn("github.com:newdev/kexp1380", e["descubiertos"])
+
+    def test_enlace_a_repo_renombrado_no_duplica(self):
+        self.ronda()
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.ronda()
+        self.m.wololo = ("<rss><channel><item><title>PS5: etaHEN 3.0 released</title>"
+                         "<link>https://wololo.net/y</link><pubDate>" +
+                         time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime()) + "</pubDate>"
+                         "<description><![CDATA[https://github.com/LightningMods/etaHEN/releases]]></description>"
+                         "</item></channel></rss>")
+        e = self.ronda()
+        self.assertEqual(self.avisos("etaHEN"), 1)
+        self.assertFalse(any("etaHEN" in p["titulo"] for p in e["pendientes"]))
+        self.assertNotIn("github.com:lightningmods/etahen", e["descubiertos"])
+
+    def test_resumen_a_trozos_no_repite(self):
+        self.ronda()
+        e = estado.cargar(self.ruta)
+        e["pendientes"] = [{"clave": f"k{i}", "tipo": "release", "repo": f"github.com:a/r{i}",
+                            "titulo": f"Herramienta {i} " + "x" * 300, "nota": 5, "nivel": "menor",
+                            "url": "https://github.com/a/b", "ts": 0} for i in range(15)]
+        estado.guardar(e, self.ruta)
+        self.m.tg.fallos = ["ok", "conexion", "conexion", "conexion", "conexion"]
+        radar.main(["resumen", "--estado", self.ruta])
+        primero = self.avisos("Resumen de la scene")
+        radar.main(["resumen", "--estado", self.ruta])
+        self.assertEqual(self.avisos("Resumen de la scene"), primero, "el trozo 1 no se repite")
+        self.assertEqual(estado.cargar(self.ruta)["pendientes"], [])
+
+    def test_commit_en_enfriamiento_no_se_come_la_release(self):
+        self.ronda()
+        e = estado.cargar(self.ruta)
+        e["repos"]["github.com:ntfargo/relapse-exploit"]["ult_aviso"] = int(time.time())
+        estado.guardar(e, self.ruta)
+        self.m.commits["ntfargo/Relapse-Exploit"].insert(0, {"sha": "abc", "html_url": "u", "commit": {
+            "message": "Add new kernel offsets", "author": {"date": iso(0.2)}}})
+        self.m.releases["ntfargo/Relapse-Exploit"] = [rel(70, "v1.0.1", "- Fixed crash", 0.2,
+                                                          repo="ntfargo/Relapse-Exploit")]
+        e = self.ronda()
+        todo = "\n".join(m["texto"] for m in self.m.tg.del_bot) + json.dumps(e["pendientes"])
+        self.assertIn("v1.0.1", todo)

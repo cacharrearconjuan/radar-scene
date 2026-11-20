@@ -56,28 +56,69 @@ def _tag_nums(tag):
     return out
 
 
-def extraer(texto, tag=None, techo=None):
-    """Firmwares mencionados. `techo` = máximo creíble (sony_max + 100)."""
-    texto = texto or ""
+RE_NEGATIVO = re.compile(
+    r"\bnot\b|n't\b|\bno\b|\bunsupported|\bdo not update|\bavoid\b|\bbeyond\b|\bwip\b|\btodo\b|"
+    r"\bsoon\b|\bplanned\b|\bcoming\b|\bfuture\b|\bblocked\b|\bpatch(?:ed|es)\b|\bfixed in\b|"
+    r"\bwill\b|\bnot yet\b|\btest(?:ing)?\b|\bexperimental\b|\bpartial\b|"
+    r"\bno (?:es|está) compatible|\bsin soporte|\bno funciona|\bno actualic", re.I)
+RE_PS4 = re.compile(r"\bps4\b|orbis", re.I)
+RE_PS5 = re.compile(r"\bps5\b|prospero", re.I)
+RE_VERSION = re.compile(r"(?i)\b(v|ver\.?|version|versión|release|build)\s*\d+(\.\d+)+")
+RE_FW_ANTES = re.compile(r"(?i)(firmware|fw|ofw|system software|software del sistema)\s*$")
+
+
+def _frases(texto):
+    """Trozos con su posición: frases, líneas y viñetas."""
+    pos = 0
+    for trozo in re.split(r"(?<=[.;!?])\s+|\n+", texto):
+        ini = texto.find(trozo, pos)
+        if ini < 0:
+            ini = pos
+        yield ini, trozo
+        pos = ini + len(trozo)
+
+
+def _quitar_versiones(texto):
+    """Borra «v1.11», «version 2.50»… pero no «firmware version 14.00»."""
+    def sub(m):
+        antes = texto[max(0, m.start() - 25):m.start()]
+        return m.group(0) if RE_FW_ANTES.search(antes) else " " * len(m.group(0))
+    return RE_VERSION.sub(sub, texto)
+
+
+def extraer(texto, tag=None, techo=None, estricto=False):
+    """Firmwares que el texto dice SOPORTAR. `techo` = máximo creíble (sony_max + 100).
+
+    Se descartan las frases negativas o de futuro («not supported», «do not update
+    beyond 14.22», «WIP», «coming soon»…) y las que hablan solo de PS4. Con
+    `estricto` también las de «experimental/testing» (no se usa por defecto).
+    """
+    texto = str(texto or "")
     techo = techo or 2000
     excluir = _tag_nums(tag)
-    vals, ocupado = set(), []
-    # Versiones de programas: «v1.11», «version 2.50», «Y2JB 1.3»: fuera
-    limpio = re.sub(r"(?i)\b(v|ver\.?|version|versión|release|build)\s*\d+(\.\d+)+", " ", texto)
-    for m in RE_RANGO.finditer(limpio):
-        a, b = _num(m.group(1), m.group(2)), _num(m.group(3), m.group(4))
-        if 100 <= a <= techo and 100 <= b <= techo and a <= b:
-            vals.update((a, b))
-            ocupado.append(m.span())
-    for m in RE_NUM.finditer(limpio):
-        if any(s <= m.start() < e for s, e in ocupado):
+    vals = set()
+    limpio = _quitar_versiones(texto)
+    for ini, frase in _frases(limpio):
+        neg = RE_NEGATIVO.search(frase)
+        if neg and (estricto or not re.fullmatch(r"(?i)test(ing)?|experimental|partial", neg.group(0))):
             continue
-        n = _num(m.group(1), m.group(2))
-        if n in excluir or not (100 <= n <= techo):
+        if RE_PS4.search(frase) and not RE_PS5.search(frase):
             continue
-        ventana = limpio[max(0, m.start() - 25): m.end() + 25]
-        if RE_CONTEXTO.search(ventana):
-            vals.add(n)
+        ocupado = []
+        for m in RE_RANGO.finditer(frase):
+            a, b = _num(m.group(1), m.group(2)), _num(m.group(3), m.group(4))
+            if 100 <= a <= techo and 100 <= b <= techo and a <= b:
+                vals.update((a, b))
+                ocupado.append(m.span())
+        for m in RE_NUM.finditer(frase):
+            if any(s <= m.start() < e for s, e in ocupado):
+                continue
+            n = _num(m.group(1), m.group(2))
+            if n in excluir or not (100 <= n <= techo):
+                continue
+            ventana = frase[max(0, m.start() - 30): m.end() + 30]
+            if RE_CONTEXTO.search(ventana):
+                vals.add(n)
     return Fw(sorted(vals))
 
 

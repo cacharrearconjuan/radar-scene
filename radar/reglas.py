@@ -13,8 +13,12 @@ RE_PRENSA_NO = re.compile(
     r"preview|wip|work in progress|in progress|progress|announce[sd]?|announcement|plans?|planned|"
     r"showcase[sd]?|demo(ed|nstrat\w+)?|eta|hints?|hinted|tease|upcoming|"
     r"possibl[ey]|potential(ly)?|reportedly|report says|en camino|próximamente|podría|"
-    r"se espera|anuncia|promete|avance)\b|\?", re.I)
-RE_JUEGOS = re.compile(r"\b(CUSA|PPSA)\d{5}\b|dlpsgame|game dumps?\b|free games? download", re.I)
+    r"se espera|anuncia|promete|avance|will|to be|won't|not|yet|next (?:week|month)|"
+    r"after|video|write-?up|shows?|showing|details|explained|teaser|confirm(s|ed)?|"
+    r"working on|in the works|delay(ed)?|soon™)\b|\?", re.I)
+RE_JUEGOS = re.compile(r"\b(CUSA|PPSA)\d{5}\b|dlpsgame|game ?dump(s|er|ers)?\b|app ?dumper|"
+                       r"\bdumper\b|game ?backups?\b|game[- ]?compressor|free games? download|"
+                       r"\bwarez\b|pirat", re.I)
 
 RE_TRAD = re.compile(r"translat|languag|locali[sz]|i18n|crowdin|typo|readme|docs?\b|"
                      r"documentation|changelog|idioma|traducc", re.I)
@@ -23,7 +27,7 @@ RE_FIX = re.compile(r"\bfix|bug|crash|stabil|cleanup|clean up|refactor|\bci\b|bu
 RE_FEAT = re.compile(r"\badd(ed|s)?\b|\bnew\b|support|implement|\bnow\b|offsets?|\bport(ed)?\b|"
                      r"introduc|enabl|release", re.I)
 RE_FUERTE = re.compile(r"exploit|kernel|jailbreak|\bhen\b|hypervisor|\blinux\b|backport|"
-                       r"emulat|\bjit\b|userland|kexp|kstuff|fpkg|debug settings", re.I)
+                       r"emulat|\bjit\b|userland|kexp|kstuff|debug settings", re.I)
 RE_PRE = re.compile(r"(beta|rc\d*|alpha|pre|test|nightly|dev)", re.I)
 
 
@@ -73,8 +77,6 @@ def disponible(n):
         return True, "release publicada"
     if t in ("commit", "readme"):
         return True, "código publicado"
-    if t == "lista_nueva":
-        return True, "ya en Payload Manager"
     if t == "firmware_sony":
         return True, "firmware oficial publicado"
     if t == "repo_nuevo":
@@ -85,6 +87,8 @@ def disponible(n):
             return False, "teaser o rumor"
         if not n.get("repos_enlazados"):
             return False, "sin enlace a la descarga"
+        if not n.get("descarga"):
+            return False, "enlaza repos, pero sin release reciente ni enlace de descarga"
         return True, f"publicado ({n.get('medio', 'prensa')} enlaza la descarga)"
     return False, "desconocido"
 
@@ -129,13 +133,6 @@ def puntuar(n, e, conf):
                 n["sin_verificar"] = True
         return _fin(n, nota, raz)
 
-    if t == "lista_nueva":
-        nota = 5
-        raz.append("payload nuevo en la lista oficial")
-        if RE_FUERTE.search(texto):
-            nota += 1
-        return _fin(n, nota, raz)
-
     base = {"A": 7, "B": 5}.get(tier, 4)
     nota = base
     lineas = clasificar_lineas(n.get("texto", ""))
@@ -176,15 +173,17 @@ def puntuar(n, e, conf):
         nota += min(2, fuertes)
         raz.append("exploit/HEN/kernel")
 
+    fiable = t == "release" or (t == "readme" and n.get("nucleo"))
     if fw.lista:
         if fw.max > expl_max:
-            if tier == "A" and t != "articulo":
+            if tier == "A" and fiable:
                 nota = 10
                 raz.insert(0, f"¡firmware {firmware.fmt(fw.max)}, por encima de lo explotable hasta "
                               f"ahora ({firmware.fmt(expl_max)})!")
             else:
                 nota = min(max(nota + 2, 7), 8)
-                raz.append(f"menciona {firmware.fmt(fw.max)} (sin confirmar como exploit)")
+                n["sin_verificar"] = True
+                raz.insert(0, f"menciona {firmware.fmt(fw.max)} (sin confirmar como exploit)")
         elif fw.max > st_repo.get("fw_max", 0) and st_repo.get("fw_max"):
             nota += 2
             raz.insert(0, f"amplía soporte hasta {firmware.fmt(fw.max)}")
@@ -225,6 +224,9 @@ def demasiado_vieja(n, conf, ahora=None):
 
 
 def es_de_juegos(n):
-    if n["tipo"] not in ("articulo", "repo_nuevo"):
-        return False
-    return bool(RE_JUEGOS.search(f"{n.get('titulo', '')} {n.get('texto', '')}"))
+    """Descargas o volcados de juegos: fuera. En releases solo se mira el título y el repo
+    (el changelog de un HEN puede citar «backups» o «fpkg» sin ser de juegos)."""
+    base = f"{n.get('titulo', '')} {n.get('repo', '')}"
+    if n["tipo"] in ("articulo", "repo_nuevo"):
+        base += " " + str(n.get("texto", ""))
+    return bool(RE_JUEGOS.search(base))

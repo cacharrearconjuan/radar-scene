@@ -60,12 +60,12 @@ def pedir(url, etag=None, timeout=15, cabeceras=None, datos=None, metodo=None):
         r = FALSO(url, c, datos) if callable(FALSO) else FALSO.get(url, Resp(404, url=url))
         LOG.append((url, r.status))
         return r
-    cuerpo = None
-    if datos is not None:
-        cuerpo = datos if isinstance(datos, bytes) else json.dumps(datos).encode()
-        c.setdefault("Content-Type", "application/json")
-    req = urllib.request.Request(url, data=cuerpo, headers=c, method=metodo)
     try:
+        cuerpo = None
+        if datos is not None:
+            cuerpo = datos if isinstance(datos, bytes) else json.dumps(datos).encode()
+            c.setdefault("Content-Type", "application/json")
+        req = urllib.request.Request(url, data=cuerpo, headers=c, method=metodo)
         with urllib.request.urlopen(req, timeout=timeout) as f:
             b = f.read()
             if f.headers.get("Content-Encoding") == "gzip":
@@ -81,8 +81,10 @@ def pedir(url, etag=None, timeout=15, cabeceras=None, datos=None, metodo=None):
         except Exception:
             pass
         r = Resp(e.code, b, e.headers.get("ETag", "") if e.headers else "", url,
-                 str(e), dict(e.headers or {}))
-    except Exception as e:  # DNS, conexión, tiempo agotado...
-        r = Resp(0, b"", "", url, f"{type(e).__name__}: {e}")
+                 f"HTTP {e.code}", dict(e.headers or {}))
+    except urllib.error.URLError as e:          # no llegó a conectar
+        r = Resp(0, b"", "", url, f"URLError: {type(e.reason).__name__}")
+    except Exception as e:  # tiempo agotado leyendo, conexión cortada, URL mal formada...
+        r = Resp(0, b"", "", url, f"{type(e).__name__}")
     LOG.append((url, r.status))
     return r

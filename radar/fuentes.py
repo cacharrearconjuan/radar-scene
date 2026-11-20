@@ -37,16 +37,25 @@ def rss_ts(s):
 RE_FUENTE = re.compile(r"https?://(github\.com|git\.etawen\.dev|[\w.-]+)/([\w.-]+)/([\w.-]+)")
 
 
+NO_REPOS = {"sponsors", "topics", "orgs", "settings", "features", "marketplace", "apps", "login",
+            "about", "collections", "trending", "user-attachments", "notifications", "search",
+            "explore", "pricing", "security", "site", "contact", "enterprise", "readme", "issues",
+            "pulls", "codespaces", "users", "account", "customer-stories", "events"}
+
+
 def clave_de_url(url):
     """'https://github.com/a/b/releases' -> 'github.com:a/b'."""
-    m = RE_FUENTE.match(url or "")
+    m = RE_FUENTE.match(str(url or ""))
     if not m:
         return None
     host, o, r = m.groups()
     r = re.sub(r"\.git$", "", r)
-    if host.endswith("github.io") or host in ("www.youtube.com", "youtube.com"):
+    host = host.lower()
+    if host not in ("github.com", "git.etawen.dev"):
         return None
-    return f"{host.lower()}:{o}/{r}"
+    if o.lower() in NO_REPOS:
+        return None
+    return f"{host}:{o}/{r}"
 
 
 def clave_repo(nombre):
@@ -132,24 +141,28 @@ def _canonico(clave, html_url):
 def releases(e, clave, info, ctx):
     """Releases nuevas de un repo de GitHub o Gitea."""
     st = e["repos"].setdefault(norm(clave), {})
+    es_gh = clave.startswith("github.com:")
+    fuente = "github" if es_gh else clave.split(":")[0]
     r = red.pedir(_url_api(clave, "releases"), etag=st.get("etag_rel"))
     if r.status == 304:
-        salud(e, "github", True)
+        salud(e, fuente, True)
         return []
     if not r.ok:
-        if r.status in (403, 429):
+        if r.status in (403, 429) and es_gh:
             ctx["limite_github"] = True
-        salud(e, "github" if "github.com" in clave else clave.split(":")[0],
-              False, f"{clave} {r.status} {r.error}")
+        if r.status == 404:
+            st["muerto"] = st.get("muerto", 0) + 1
+        salud(e, fuente, False, f"{clave} {r.status} {r.error}")
         return []
-    salud(e, "github" if "github.com" in clave else clave.split(":")[0], True)
+    st.pop("muerto", None)
+    salud(e, fuente, True)
     try:
         lista = r.json()
     except ValueError:
         return []
     if not isinstance(lista, list):
         return []
-    st["etag_rel"] = r.etag
+    lista = [x for x in lista if isinstance(x, dict)]
     vistos = st.setdefault("ids", [])
     lista = [x for x in lista if not x.get("draft")]
     lista.sort(key=lambda x: iso_ts(x.get("published_at") or x.get("created_at")))
@@ -166,22 +179,26 @@ def releases(e, clave, info, ctx):
         if not sembrado and not (avisar_ultima and es_ultima):
             continue
         canon = _canonico(clave, rel.get("html_url"))
+        de_lista = avisar_ultima and not sembrado
         nuevas.append({
+            "nuevo_en_lista": de_lista, "exento_antiguedad": de_lista,
             "tipo": "release", "repo": canon, "repo_cfg": clave,
-            "titulo": (rel.get("name") or rel.get("tag_name") or "").strip(),
-            "tag": rel.get("tag_name") or "", "tag_anterior": st.get("tag", ""),
+            "titulo": str(rel.get("name") or rel.get("tag_name") or "").strip(),
+            "tag": str(rel.get("tag_name") or ""), "tag_anterior": str(st.get("tag", "")),
             "url": rel.get("html_url") or "", "ts": ts,
-            "texto": (rel.get("body") or "")[:6000],
+            "texto": str(rel.get("body") or "")[:6000],
             "prerelease": bool(rel.get("prerelease")),
             "n_assets": len(rel.get("assets") or []),
             "primera": not st.get("tag"),
         })
     st["ids"] = vistos[-40:]
     if lista:
-        st["tag"] = lista[-1].get("tag_name") or st.get("tag", "")
+        st["tag"] = str(lista[-1].get("tag_name") or st.get("tag", ""))
         st["nombre"] = _canonico(clave, lista[-1].get("html_url")).split(":", 1)[1]
+        st["ult_rel_ts"] = iso_ts(lista[-1].get("published_at") or lista[-1].get("created_at"))
     if not sembrado:
         st["sembrado"] = True
+    st["etag_rel"] = r.etag          # al final: si algo falla antes, se vuelve a leer
     return nuevas
 
 
@@ -241,7 +258,6 @@ def readme(e, clave, info, ctx):
     r = red.pedir(_url_api(clave, "readme"), etag=st.get("etag_readme"), cabeceras=cab)
     if r.status == 304 or not r.ok:
         return []
-    st["etag_readme"] = r.etag
     texto = r.texto
     if texto.lstrip().startswith("{"):          # por si llega en JSON base64
         try:
@@ -251,6 +267,7 @@ def readme(e, clave, info, ctx):
     fw = firmware.extraer(texto, techo=ctx["techo"])
     previo = st.get("fw_readme")
     st["fw_readme"] = max(fw.max, previo or 0)
+    st["etag_readme"] = r.etag
     if previo is None or fw.max <= previo:
         return []
     return [{
@@ -265,8 +282,9 @@ def readme(e, clave, info, ctx):
 
 # ------------------------------------------------------------ listas de payloads
 def listas(e, cfg, ctx):
-    """Descubre repos en las listas de payloads. Un payload nuevo en la lista es novedad."""
-    out = []
+    """Descubre repos en las listas de payloads. Un payload que entra en la lista hace
+    que se avise de su última release aunque sea la primera vez que se ve el repo."""
+    configurados = {norm(c) for c in cfg["repos"]}
     for url in cfg["listas"]:
         st = e["listas"].setdefault(url, {"repos": []})
         r = red.pedir(url, etag=st.get("etag"))
@@ -281,33 +299,33 @@ def listas(e, cfg, ctx):
             datos = r.json()
         except ValueError:
             continue
-        st["etag"] = r.etag
         pays = datos.get("payloads", []) if isinstance(datos, dict) else datos
+        if not isinstance(pays, list):
+            continue
         conocidos = set(st["repos"])
         for p in pays:
+            if not isinstance(p, dict):
+                continue
             clave = clave_de_url(p.get("source") or p.get("url") or "")
             if not clave:
                 continue
             k = norm(clave)
             if k in cfg["excluir"]:
                 continue
-            nombre = (p.get("name") or "").strip()
-            if k not in e["descubiertos"] and k not in {norm(c) for c in cfg["repos"]}:
+            nombre = str(p.get("name") or "").strip()
+            if k not in e["descubiertos"] and k not in configurados:
                 e["descubiertos"][k] = {"clave": clave, "tier": "C", "alias": [nombre] if nombre else [],
                                         "origen": "lista"}
             if k not in conocidos:
                 st["repos"].append(k)
-                if st.get("sembrada") and k not in {norm(c) for c in cfg["repos"]}:
-                    out.append({
-                        "tipo": "lista_nueva", "repo": clave, "repo_cfg": clave,
-                        "titulo": f"{nombre} entra en la lista de Payload Manager",
-                        "tag": p.get("version") or "", "tag_anterior": "",
-                        "url": p.get("source") or "", "ts": int(time.time()),
-                        "texto": p.get("description") or "", "prerelease": False,
-                        "n_assets": 1, "primera": True, "alias": [nombre] if nombre else [],
-                    })
+                if st.get("sembrada") and k not in configurados:
+                    rs = e["repos"].setdefault(k, {})
+                    if not rs.get("sembrado"):
+                        rs["avisar_ultima"] = True
+                        ctx.setdefault("prioridad", []).append(k)
         st["sembrada"] = True
-    return out
+        st["etag"] = r.etag
+    return []
 
 
 # ------------------------------------------------------------ repos nuevos (búsqueda)
@@ -319,37 +337,42 @@ RE_RELEVANTE = re.compile(
 def busqueda(e, cfg, conf, ctx):
     desde = time.strftime("%Y-%m-%d", time.gmtime(time.time() - conf["busqueda_dias"] * 86400))
     q = quote(f"ps5 in:name,description,topics created:>={desde} fork:false")
-    r = red.pedir(f"{API}/search/repositories?q={q}&sort=stars&order=desc&per_page=40")
+    r = red.pedir(f"{API}/search/repositories?q={q}&sort=stars&order=desc&per_page=50")
     if not r.ok:
         salud(e, "busqueda", False, f"{r.status} {r.error}")
         return []
     salud(e, "busqueda", True)
     try:
         items = r.json().get("items", [])
-    except ValueError:
+    except (ValueError, AttributeError):
         return []
+    fst = e["feeds"].setdefault("busqueda", {})
+    sembrada = fst.get("sembrado")
     out = []
     umbrales = conf["umbrales_estrellas"]
-    conocidos = {norm(c) for c in cfg["repos"]} | set(e["descubiertos"]) | cfg["excluir"]
+    excluir = {norm(c) for c in cfg["repos"]} | cfg["excluir"]
     for it in items:
-        nombre = it.get("full_name", "")
+        if not isinstance(it, dict):
+            continue
+        nombre = str(it.get("full_name", ""))
         clave = "github.com:" + nombre
         k = norm(clave)
         texto = f"{nombre} {it.get('description') or ''} {' '.join(it.get('topics') or [])}"
-        if it.get("fork") or not RE_RELEVANTE.search(texto) or k in conocidos:
+        if it.get("fork") or not RE_RELEVANTE.search(texto) or k in excluir:
             continue
         estrellas = int(it.get("stargazers_count") or 0)
         st = e["busqueda"].setdefault(nombre, {"umbrales": []})
         st["estrellas"] = estrellas
+        st["visto"] = int(time.time())
         cruzados = [u for u in umbrales if estrellas >= u and u not in st["umbrales"]]
         if not cruzados:
             continue
-        if not e.get("sembrado_global"):
+        if not sembrada:
             st["umbrales"] += cruzados
             continue
         if not st.get("con_codigo"):
-            if int(it.get("size") or 0) == 0 or not _tiene_codigo(clave):
-                continue                      # sin código todavía: se reintenta
+            if not _tiene_codigo(clave):
+                continue                      # sin código ni descargas todavía: se reintenta
             st["con_codigo"] = True
         st["umbrales"] += cruzados
         u = max(cruzados)
@@ -357,13 +380,18 @@ def busqueda(e, cfg, conf, ctx):
             "tipo": "repo_nuevo", "repo": clave, "repo_cfg": clave,
             "titulo": f"Repo nuevo: {nombre} ({estrellas}★)",
             "tag": f"{u}stars", "tag_anterior": "", "url": it.get("html_url") or "",
-            "ts": iso_ts(it.get("created_at")), "texto": it.get("description") or "",
+            "ts": int(time.time()), "creado": iso_ts(it.get("created_at")),
+            "texto": str(it.get("description") or ""),
             "prerelease": False, "n_assets": 0, "primera": True, "estrellas": estrellas,
             "umbral": u,
         })
-        # A partir de ahora también se vigilan sus releases
+        # A partir de ahora también se vigilan sus releases (sin volcar las que ya tenga)
         e["descubiertos"].setdefault(k, {"clave": clave, "tier": "C", "alias": [nombre.split("/")[1]],
                                          "origen": "busqueda"})
+    # Poda: repos que ya no salen en la búsqueda
+    lim = time.time() - 30 * 86400
+    e["busqueda"] = {n: v for n, v in e["busqueda"].items() if v.get("visto", time.time()) >= lim}
+    fst["sembrado"] = True
     return out
 
 
@@ -372,14 +400,20 @@ RE_NO_CODIGO = re.compile(r"^(readme|license|licence|copying|\.gitignore|\.gitat
 
 
 def _tiene_codigo(clave):
+    """Código en la raíz o, si solo hay README, una release con archivos (.elf, .zip…)."""
     r = red.pedir(_url_api(clave, "raiz"))
-    if not r.ok:
-        return False
+    if r.ok:
+        try:
+            lista = r.json()
+            if any(not RE_NO_CODIGO.match(str(x.get("name", ""))) for x in lista if isinstance(x, dict)):
+                return True
+        except (ValueError, AttributeError, TypeError):
+            pass
+    r = red.pedir(_url_api(clave, "releases"))
     try:
-        lista = r.json()
-    except ValueError:
+        return r.ok and any((x.get("assets") or []) for x in r.json() if isinstance(x, dict))
+    except (ValueError, AttributeError, TypeError):
         return False
-    return any(not RE_NO_CODIGO.match(x.get("name", "")) for x in lista if isinstance(x, dict))
 
 
 # ------------------------------------------------------------ Sony
@@ -415,7 +449,8 @@ def sony(e, conf, ctx):
 
 
 # ------------------------------------------------------------ prensa (RSS)
-RE_ENLACE = re.compile(r"https?://(?:github\.com|git\.etawen\.dev)/[\w.-]+/[\w.-]+")
+RE_ENLACE_LARGO = re.compile(r"https?://(?:github\.com|git\.etawen\.dev)/[\w.-]+/[\w.-]+[^\s\"'<>)]*")
+RE_DESCARGA = re.compile(r"/releases|/archive/|\.(elf|bin|zip|7z|pkg|js|lua)(\b|$)", re.I)
 
 
 def prensa(e, cfg, ctx):
@@ -438,7 +473,7 @@ def prensa(e, cfg, ctx):
         ns = {"content": "http://purl.org/rss/1.0/modules/content/"}
         sembrado = st.get("sembrado")
         for it in raiz.iter("item"):
-            titulo = (it.findtext("title") or "").strip()
+            titulo = re.sub(r"\s+", " ", it.findtext("title") or "").strip()
             enlace = (it.findtext("link") or "").strip()
             guid = (it.findtext("guid") or enlace).strip()
             if guid in st["guids"]:
@@ -448,17 +483,19 @@ def prensa(e, cfg, ctx):
                 continue
             cuerpo = (it.findtext("content:encoded", namespaces=ns) or "") + " " + \
                      (it.findtext("description") or "")
-            repos = []
-            for m in RE_ENLACE.finditer(cuerpo):
+            repos, descarga = [], False
+            for m in RE_ENLACE_LARGO.finditer(cuerpo):
                 c = clave_de_url(m.group(0))
                 if c and c not in repos:
                     repos.append(c)
+                if c and RE_DESCARGA.search(m.group(0)):
+                    descarga = True
             out.append({
                 "tipo": "articulo", "repo": repos[0] if repos else "prensa", "repo_cfg": "prensa",
                 "titulo": titulo, "tag": "", "tag_anterior": "", "url": enlace,
                 "ts": rss_ts(it.findtext("pubDate")) or int(time.time()),
                 "texto": re.sub(r"<[^>]+>", " ", cuerpo)[:3000], "prerelease": False,
-                "n_assets": 0, "primera": False, "repos_enlazados": repos,
+                "n_assets": 0, "primera": False, "repos_enlazados": repos, "enlace_descarga": descarga,
                 "medio": re.sub(r"^https?://(www\.)?([^/]+).*$", r"\2", url),
             })
         st["guids"] = st["guids"][-200:]

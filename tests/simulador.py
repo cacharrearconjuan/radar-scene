@@ -86,6 +86,9 @@ class Mundo:
         self.tg = Telegram()
         self.peticiones = []
         self.etags = {}
+        self.renombres = {"LightningMods/etaHEN": "etaHEN/etaHEN"}
+        self.listas_extra = []       # entradas que se añaden a la lista oficial
+        self.contenidos = {}         # repo -> lista de archivos de la raíz
 
     def __call__(self, url, cab, datos):
         self.peticiones.append(url)
@@ -107,7 +110,8 @@ class Mundo:
             repo, que = m.groups()
             datos = {"releases": self.releases, "commits": self.commits, "readme": self.readme}.get(que)
             if que == "contents":
-                return red.Resp(200, json.dumps([{"name": "README.md"}, {"name": "exploit.js"}]).encode())
+                arch = self.contenidos.get(repo, ["README.md", "exploit.js"])
+                return red.Resp(200, json.dumps([{"name": a} for a in arch]).encode())
             if que == "readme":
                 if repo not in self.readme:
                     return red.Resp(404)
@@ -119,10 +123,14 @@ class Mundo:
             return red.Resp(200, json.dumps(self.search).encode())
         if "api.github.com/rate_limit" in url:
             return red.Resp(200, json.dumps({"resources": {"core": {"remaining": 990, "limit": 1000}}}).encode())
-        if "api.github.com/repos/" in url:
-            return red.Resp(200, b"{}")
+        m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/?]+)$", url)
+        if m:
+            nombre = self.renombres.get(m.group(1), m.group(1))
+            return red.Resp(200, json.dumps({"full_name": nombre}).encode())
         if url.endswith("payloads_v2.json"):
-            return self._etag(url, cab, leer("payloads_v2.json", "rb"))
+            d = json.loads(leer("payloads_v2.json"))
+            d["payloads"] += self.listas_extra
+            return self._etag(url, cab, json.dumps(d).encode())
         if url.endswith("mis-payloads-ps5/payloads.json"):
             return self._etag(url, cab, leer("payloads_propio.json", "rb"))
         if "playstation.com" in url:
