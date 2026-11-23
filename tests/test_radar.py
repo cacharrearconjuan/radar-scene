@@ -590,3 +590,49 @@ class TestIA(Base):
         from radar import ia as IA
         self.assertEqual(IA._extraer_json('```json\n{"nota": 7, "resumen": "a\nb"}\n```')["nota"], 7)
         self.assertIsNone(IA._extraer_json('{"nota": 7, "resumen": "cort'))
+
+
+class TestAjustesIA(Base):
+    def test_titulos_versiones_y_frases(self):
+        from radar import formato, ia as IA
+        self.assertEqual(formato.titulo_bonito({"titulo": "v0.8.4", "tag": "v0.8.4", "repo": "github.com:itsPLK/ps5-webkit-autoloader",
+                                                "alias": ["WebKit Autoloader"]}), "WebKit Autoloader v0.8.4")
+        self.assertEqual(formato.titulo_bonito({"titulo": "etaHEN 2.6b", "tag": "2.6b", "repo": "x"}), "etaHEN 2.6b")
+        f = IA._frase("Permite jugar sin depender del inglés y ver las traducciones superpuestas en una televisión "
+                      "compatible, sin anuncios ni suscripciones y con muchas más cosas que no caben aquí", 120)
+        self.assertTrue(f.endswith("…") or f.endswith("."))
+        self.assertNotIn("l…", f[-3:])
+
+    def test_agrupa_versiones(self):
+        items = [{"clave": f"k{i}", "tipo": "release", "repo": "github.com:phantomptr/ps5upload", "tag": f"v12.6.{i}",
+                  "titulo": f"v12.6.{i}", "url": f"u{i}", "nota": 5, "nivel": "menor", "ts": i} for i in (22, 23, 24)]
+        g = radar.agrupar(items)
+        self.assertEqual(len(g), 1)
+        self.assertEqual(g[0]["tag"], "v12.6.24")
+        self.assertEqual(g[0]["versiones"], ["v12.6.22", "v12.6.23", "v12.6.24"])
+
+    def test_repetir_resumen_del_23(self):
+        """El resumen del 23/11: fuera el traductor (no es scene), una línea por repo."""
+        self.ronda()
+        self.m.ia = "ok"
+        self.m.releases["itsPLK/ps5-webkit-autoloader"] = [rel(81, "v0.8.4", "- Added support for firmware 3.00-13.60\n- New payload settings", 30,
+                                                                repo="itsPLK/ps5-webkit-autoloader")]
+        self.m.releases["phantomptr/ps5upload"] = [rel(90 + i, f"v12.6.2{i}", "- Minor fixes", 30 - i, repo="phantomptr/ps5upload")
+                                                   for i in (2, 3)]
+        self.m.releases["yunusdemirbag/nino-game-translator"] = [rel(99, "v4.5.0", "- New overlay translator languages", 20,
+                                                                      repo="yunusdemirbag/nino-game-translator")]
+        e = estado.cargar(self.ruta)
+        ahora = int(time.time())
+        for k in ["github.com:itsplk/ps5-webkit-autoloader@v0.8.4", "github.com:phantomptr/ps5upload@v12.6.22",
+                  "github.com:phantomptr/ps5upload@v12.6.23", "github.com:yunusdemirbag/nino-game-translator@v4.5.0"]:
+            e["vistos"][k] = ahora - 3600
+        e["resumen"].pop("anterior", None)
+        estado.guardar(e, self.ruta)
+        radar.main(["repetir_resumen", "--estado", self.ruta])
+        t = self.m.tg.del_bot[-1]["texto"]
+        print("\n" + t)
+        self.assertIn("repetido", t)
+        self.assertIn("ps5-webkit-autoloader v0.8.4", t)
+        self.assertNotIn("nino", t.lower())
+        self.assertEqual(sum("ps5upload" in l for l in t.splitlines() if l.startswith("•")), 1)
+        self.assertIn("2 versiones", t)

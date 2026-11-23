@@ -6,7 +6,7 @@ on:
       modo:
         description: "Qué hacer"
         type: choice
-        options: [ronda, prueba, diagnostico, resumen]
+        options: [ronda, prueba, diagnostico, resumen, repetir_resumen]
         default: ronda
   schedule:
     - cron: "7,22,37,52 * * * *"   # respaldo por si cron-job.org falla

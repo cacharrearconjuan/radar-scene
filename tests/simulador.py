@@ -106,17 +106,27 @@ class Mundo:
             disp = self.ia != "dice_no"
             self.ultimo_prompt = contenido
             self.ultimo_modelo = datos.get("model")
+            es_scene = "translator" not in contenido.lower()
             out = {"resumen": "Resumen de prueba en castellano.", "nota": 9, "disponible": disp,
+                   "es_scene": es_scene, "en_una_frase": "Frase corta del resumen para el canal.",
                    "para_que_sirve": "Sirve para cargar homebrew <b>sin PC</b>.",
                    "idea_video": {"titulo": "etaHEN 3.0: así se instala", "gancho": "Ya está aquí."},
                    "pasos": ["1. Abre Payload Manager", "2) Carga etaHEN.bin https://x.y", "Espera la notificación"],
                    "firmwares": "", "es_juego": False}
             return red.Resp(200, json.dumps({"choices": [{"message": {
                 "content": "Claro: " + json.dumps(out)}}]}).encode())
+        m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/releases/tags/(.+)$", url)
+        if m:
+            for x in self.releases.get(m.group(1), []):
+                if x["tag_name"] == m.group(2):
+                    return red.Resp(200, json.dumps(x).encode())
+            return red.Resp(404)
         m = re.match(r"https://api\.github\.com/repos/([^/]+/[^/]+)/(releases|commits|readme|contents)", url)
         if m:
             repo, que = m.groups()
             datos = {"releases": self.releases, "commits": self.commits, "readme": self.readme}.get(que)
+            if datos is not None:            # GitHub no distingue mayúsculas en owner/repo
+                repo = next((k for k in datos if k.lower() == repo.lower()), repo)
             if que == "contents":
                 arch = self.contenidos.get(repo, ["README.md", "exploit.js"])
                 return red.Resp(200, json.dumps([{"name": a} for a in arch]).encode())

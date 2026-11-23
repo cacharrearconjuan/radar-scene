@@ -18,7 +18,7 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMPOS_GUARDADOS = ("clave", "tipo", "repo", "repo_cfg", "titulo", "tag", "url", "ts", "nota", "nivel",
                     "estado_txt", "fw", "fw_ia", "resumen", "angulo", "competencia", "razones",
                     "sin_ia", "confirmado_por", "sin_verificar", "fw_nuevo", "fw_previo", "alias",
-                    "para_que", "idea_titulo", "pasos", "ia_motivo")
+                    "para_que", "idea_titulo", "pasos", "ia_motivo", "frase", "versiones")
 
 
 def cargar_conf():
@@ -451,6 +451,30 @@ def toca_resumen(e, conf, forzar=False):
     return hoy.hour * 60 + hoy.minute >= _hm(conf["hora_resumen"])
 
 
+def agrupar(items):
+    """Una línea por repo: si salieron varias versiones (v12.6.22, v12.6.23…), se juntan."""
+    grupos = {}
+    for x in items:
+        k = norm(x.get("repo") or "") if x.get("tipo") not in ("articulo", "firmware_sony") else x.get("clave")
+        grupos.setdefault(k, []).append(x)
+    out = []
+    for g in grupos.values():
+        g.sort(key=lambda x: (x.get("ts", 0), x.get("nota", 0)))
+        principal = dict(max(g, key=lambda x: (x.get("nota", 0), x.get("ts", 0))))
+        ultima = g[-1]
+        if len(g) > 1:
+            tags = [x.get("tag") for x in g if x.get("tipo") == "release" and x.get("tag")]
+            principal["versiones"] = list(dict.fromkeys(tags))
+            if ultima.get("tipo") == "release":          # se enlaza y titula la más reciente
+                principal["tag"], principal["url"] = ultima.get("tag"), ultima.get("url")
+                principal["titulo"] = ultima.get("titulo")
+            for campo in ("frase", "para_que", "resumen", "idea_titulo"):
+                if not principal.get(campo):
+                    principal[campo] = next((x[campo] for x in reversed(g) if x.get(campo)), None)
+        out.append(principal)
+    return sorted(out, key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))
+
+
 def enviar_resumen(e, cfg, conf, ruta, forzar=False):
     pendiente = e["resumen"].get("congelado")
     if pendiente and not forzar and en_silencio(conf):
@@ -460,7 +484,8 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
     dia = ahora_local(conf).strftime("%Y-%m-%d")
     r = e["resumen"]
     if not r.get("congelado"):
-        items = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))[:40]
+        crudos = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))[:60]
+        items = agrupar(crudos)[:40]
         if not items:
             r["ultimo_dia"] = dia
             return
@@ -471,8 +496,9 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         except Exception as ex:
             print(f"[youtube] {type(ex).__name__}")
         # Se congela: los trozos no cambian aunque entren novedades a mitad de envío
-        claves = {x.get("clave") for x in items}
+        claves = {x.get("clave") for x in crudos}
         e["pendientes"] = [x for x in e["pendientes"] if x.get("clave") not in claves]
+        r["anterior"] = {"dia": dia, "items": crudos}        # para «repetir_resumen»
         trozos = formato.trocear(formato.resumen(items, conf["zona"]))
         r["congelado"] = {"dia": dia, "trozos": trozos, "enviados": 0,
                           "url": items[0].get("url") or "https://github.com"}
@@ -537,6 +563,95 @@ def modo_ronda(e, cfg, conf, ruta):
     estado.guardar(e, ruta)
     enviar_cola(e, conf, ruta)
     enviar_resumen(e, cfg, conf, ruta)
+    estado.guardar(e, ruta)
+
+
+def _reconstruir(e, cfg, conf):
+    """Si no hay copia del último resumen, se rehace con lo visto en las últimas 30 h."""
+    lim = time.time() - 30 * 3600
+    eq = Equivalencias(e, cfg)
+    out = []
+    for clave, ts in e["vistos"].items():
+        if ts < lim or ":" not in clave or not clave.startswith("github.com:"):
+            continue
+        if "@" in clave:
+            repo, tag = clave.split("@", 1)
+            tipo = "release"
+        elif "!" in clave and clave.endswith("stars"):
+            repo, tag = clave.split("!", 1)
+            tipo = "repo_nuevo"
+        else:
+            continue
+        out.append({"clave": clave, "tipo": tipo, "repo": repo, "repo_cfg": repo, "tag": tag, "ts": ts})
+    return out
+
+
+def modo_repetir_resumen(e, cfg, conf, ruta):
+    """Vuelve a mandar el último resumen, pasándolo otra vez por la IA (para probar ajustes)."""
+    ant = e["resumen"].get("anterior") or {}
+    base = ant.get("items") or _reconstruir(e, cfg, conf)
+    eq = Equivalencias(e, cfg)
+    ctx = {"techo": e["fw"].get("sony_max", 1422) + 100}
+    items = []
+    e["ia"]["fallos"] = 0                    # prueba manual: sin cortacircuitos
+    for x in base[:15]:
+        n = dict(x)
+        try:
+            nombre = str(n["repo"]).split(":", 1)[1]
+            if n["tipo"] == "release":
+                r = red.pedir(f"{fuentes.API}/repos/{nombre}/releases?per_page=15")
+                lista = r.json() if r.ok else []
+                lista = [x for x in lista if isinstance(x, dict) and not x.get("draft")]
+                for i, j in enumerate(lista):
+                    if str(j.get("tag_name", "")).lower() == str(n["tag"]).lower():
+                        n.update(titulo=str(j.get("name") or j.get("tag_name") or ""), tag=j.get("tag_name"),
+                                 url=j.get("html_url") or n.get("url"), texto=str(j.get("body") or "")[:6000],
+                                 prerelease=bool(j.get("prerelease")),
+                                 ts=fuentes.iso_ts(j.get("published_at")) or n.get("ts"),
+                                 tag_anterior=str(lista[i + 1].get("tag_name", "")) if i + 1 < len(lista) else "")
+                        canon = fuentes.clave_de_url(j.get("html_url") or "")
+                        if canon:
+                            n["repo"] = n["repo_cfg"] = canon
+                        break
+            elif n["tipo"] == "repo_nuevo":
+                r = red.pedir(f"{fuentes.API}/repos/{nombre}")
+                if r.ok:
+                    j = r.json()
+                    est = int(j.get("stargazers_count") or 0)
+                    n.update(titulo=f"Repo nuevo: {nombre} ({est}★)", url=j.get("html_url"),
+                             texto=str(j.get("description") or ""), estrellas=est,
+                             umbral=max([u for u in conf["umbrales_estrellas"] if est >= u] or [50]))
+            n.setdefault("titulo", n.get("tag", "")); n.setdefault("texto", "")
+            n.setdefault("url", "https://" + str(n["repo"]).replace(":", "/", 1))
+            anotar(n, cfg, e, eq)
+            ok, txt = reglas.disponible(n)
+            if not ok or reglas.es_de_juegos(n):
+                continue
+            n["estado_txt"] = txt
+            for k in ("resumen", "para_que", "idea_titulo", "frase", "angulo", "pasos", "sin_ia", "ia_motivo"):
+                n.pop(k, None)
+            reglas.puntuar(n, e, conf)
+            n["nivel"] = reglas.nivel(n["nota"], conf)
+            if n["nivel"] in ("descartado", "fuego"):
+                continue
+            if True:                         # al repetir, la IA repasa todo (es algo puntual)
+                res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
+                if not ia.combinar(n, res, conf["umbral_fuego"]):
+                    print(f"[repetir] la IA lo descarta: {n.get('titulo')}")
+                    continue
+                n["nivel"] = reglas.nivel(n["nota"], conf)
+                if n["nivel"] in ("descartado", "fuego"):
+                    continue
+            items.append(n)
+        except Exception as ex:
+            print(f"[repetir] {type(ex).__name__} en {x.get('clave')}")
+    items = agrupar(items)
+    if not items:
+        telegram.enviar(e, "🗞️ Al repasar el último resumen con la IA ajustada no queda nada que merezca la pena.",
+                        None, registrar=False)
+        return
+    for i, trozo in enumerate(formato.trocear(formato.resumen(items, conf["zona"], repetido=True))):
+        telegram.enviar(e, trozo, None, registrar=False)
     estado.guardar(e, ruta)
 
 
@@ -612,7 +727,7 @@ def modo_diagnostico(e, cfg, conf, ruta):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("modo", nargs="?", default="ronda",
-                    choices=["ronda", "prueba", "diagnostico", "resumen"])
+                    choices=["ronda", "prueba", "diagnostico", "resumen", "repetir_resumen"])
     ap.add_argument("--estado", default=os.path.join(RAIZ, "_estado", "estado.json"))
     ap.add_argument("--fuentes", default=os.path.join(RAIZ, "fuentes.txt"))
     a = ap.parse_args(argv)
@@ -627,6 +742,8 @@ def main(argv=None):
         modo_prueba(e, cfg, conf, a.estado)
     elif a.modo == "diagnostico":
         modo_diagnostico(e, cfg, conf, a.estado)
+    elif a.modo == "repetir_resumen":
+        modo_repetir_resumen(e, cfg, conf, a.estado)
     elif a.modo == "resumen":
         enviar_resumen(e, cfg, conf, a.estado, forzar=True)
         estado.guardar(e, a.estado)

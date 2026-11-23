@@ -17,6 +17,27 @@ ANGULO = {
 }
 
 
+import re as _re
+
+
+def titulo_bonito(n):
+    """«v0.8.4» -> «ps5-webkit-autoloader v0.8.4»: el título solo con la versión no dice nada."""
+    t = str(n.get("titulo") or "").strip()
+    if not t or _re.fullmatch(r"(?i)v?\d[\w.\-+]*", t) or t == n.get("tag"):
+        nombre = (n.get("alias") or [None])[0] or nombre_repo(n).split("/")[-1]
+        return f"{nombre} {n.get('tag') or t}".strip()
+    return t
+
+
+def corta(s, n=240):
+    s = str(s or "")
+    if len(s) <= n:
+        return s
+    c = s[:n]
+    p = c.rfind(". ")
+    return c[:p + 1] if p > n * 0.5 else c[:c.rfind(" ")].rstrip(",;:") + "…"
+
+
 def nombre_repo(n):
     r = n.get("repo") or ""
     if r == "sony":
@@ -26,7 +47,7 @@ def nombre_repo(n):
 
 def aviso(n, prueba=False):
     ic = ICONO.get(n.get("nivel"), "📋")
-    tit = escape(n.get("titulo") or "")
+    tit = escape(titulo_bonito(n))
     rep = escape(nombre_repo(n))
     cab = f"{ic} <b>{n['nota']}/10 · {tit}</b>"
     if rep and rep.lower() not in tit.lower() and n["tipo"] != "firmware_sony":
@@ -67,27 +88,30 @@ def aviso(n, prueba=False):
     return "\n".join(lin)
 
 
-def resumen(items, zona, extra=0):
+def resumen(items, zona, extra=0, repetido=False):
     hoy = datetime.now(ZoneInfo(zona)).strftime("%d/%m")
-    lin = [f"🗞️ <b>Resumen de la scene · {hoy}</b>"]
+    lin = [f"🗞️ <b>Resumen de la scene · {hoy}</b>" + (" <i>(repetido, con la IA ajustada)</i>" if repetido else "")]
     for niv, titulo in (("interesante", "⭐ Interesante"), ("menor", "📋 Menor")):
         grupo = [x for x in items if x.get("nivel") == niv]
         if not grupo:
             continue
         lin += ["", f"<b>{titulo}</b>"]
         for x in grupo:
-            t = escape(x.get("titulo") or "")
+            t = escape(titulo_bonito(x))
             r = escape(nombre_repo(x))
             linea = f"• <a href=\"{escape(x.get('url') or '', quote=True)}\">{t}</a>"
-            if r and r.lower() not in t.lower():
+            if r and r.split("/")[-1].lower() not in t.lower() and r.lower() not in t.lower():
                 linea += f" — <i>{r}</i>"
             linea += f" ({x['nota']}/10)"
+            if len(x.get("versiones") or []) > 1:
+                linea += f" · {len(x['versiones'])} versiones: {escape(', '.join(x['versiones'][-4:]))}"
             if x.get("competencia") and x["competencia"].startswith("ya lo sacó"):
                 linea += " · 📺 " + escape(x["competencia"])
             if x.get("idea_titulo"):
                 linea += f"\n  🎬 «{escape(x['idea_titulo'])}»"
-            if x.get("para_que") or x.get("resumen"):
-                linea += f"\n  {escape((x.get('para_que') or x['resumen'])[:220])}"
+            texto = x.get("frase") or x.get("para_que") or x.get("resumen")
+            if texto:
+                linea += f"\n  {escape(corta(texto, 240))}"
             lin.append(linea)
     if extra:
         lin += ["", f"… y {extra} más."]
