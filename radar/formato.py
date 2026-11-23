@@ -88,13 +88,25 @@ def aviso(n, prueba=False):
     return "\n".join(lin)
 
 
-def resumen(items, zona, extra=0, repetido=False):
+def _fw_texto(x):
+    fw = firmware.Fw(x.get("fw") or [])
+    if fw.lista:
+        return fw.texto()
+    return x.get("fw_ia") or ""
+
+
+def resumen(items, zona, extra=0, repetido=False, tarde=False, desde=""):
     hoy = datetime.now(ZoneInfo(zona)).strftime("%d/%m")
-    lin = [f"🗞️ <b>Resumen de la scene · {hoy}</b>" + (" <i>(repetido, con la IA ajustada)</i>" if repetido else "")]
+    cab = "Actualización de la tarde" if tarde else "Resumen de la scene"
+    lin = [f"🗞️ <b>{cab} · {hoy}</b>" + (" <i>(repetido, con la IA ajustada)</i>" if repetido else "")]
+    if tarde and desde:
+        lin.append(f"<i>Lo nuevo desde el resumen de las {escape(desde)}</i>")
     for niv, titulo in (("interesante", "⭐ Interesante"), ("menor", "📋 Menor")):
         grupo = [x for x in items if x.get("nivel") == niv]
         if not grupo:
             continue
+        while lin and lin[-1] == "":
+            lin.pop()
         lin += ["", f"<b>{titulo}</b>"]
         for x in grupo:
             t = escape(titulo_bonito(x))
@@ -105,17 +117,50 @@ def resumen(items, zona, extra=0, repetido=False):
             linea += f" ({x['nota']}/10)"
             if len(x.get("versiones") or []) > 1:
                 linea += f" · {len(x['versiones'])} versiones: {escape(', '.join(x['versiones'][-4:]))}"
-            if x.get("competencia") and x["competencia"].startswith("ya lo sacó"):
-                linea += " · 📺 " + escape(x["competencia"])
-            if x.get("idea_titulo"):
-                linea += f"\n  🎬 «{escape(x['idea_titulo'])}»"
-            texto = x.get("frase") or x.get("para_que") or x.get("resumen")
-            if texto:
-                linea += f"\n  {escape(corta(texto, 240))}"
+            if niv == "interesante":
+                linea += _detalle(x)
+            else:
+                if x.get("competencia") and x["competencia"].startswith("ya lo sacó"):
+                    linea += " · 📺 " + escape(x["competencia"])
+                texto = x.get("frase") or x.get("para_que") or x.get("resumen")
+                if texto:
+                    linea += f"\n  {escape(corta(texto, 240))}"
             lin.append(linea)
+            if niv == "interesante":
+                lin.append("")                 # aire entre los ⭐, que ahora son más largos
+    while lin and lin[-1] == "":
+        lin.pop()
     if extra:
         lin += ["", f"… y {extra} más."]
     return "\n".join(lin)
+
+
+def _detalle(x):
+    """Bloque largo de un ⭐: idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos."""
+    out = []
+    if x.get("idea_titulo"):
+        out.append(f"🎬 <b>Vídeo:</b> «{escape(x['idea_titulo'])}»")
+        if x.get("angulo"):
+            out.append(f"🎙️ Gancho: {escape(corta(x['angulo'], 200))}")
+    que = x.get("resumen") or x.get("frase")
+    if que:
+        out.append(f"📝 <b>Qué es:</b> {escape(corta(que, 400))}")
+    if x.get("para_que") and x.get("para_que") != que:
+        out.append(f"🛠️ <b>Para qué sirve:</b> {escape(corta(x['para_que'], 400))}")
+    fw = _fw_texto(x)
+    if fw:
+        out.append(f"🎯 Firmware: {escape(fw)}")
+    if x.get("estado_txt"):
+        out.append(f"📌 {escape(x['estado_txt'])}" + (" · ⚠️ sin verificar" if x.get("sin_verificar") else ""))
+    if x.get("competencia"):
+        out.append(f"📺 Competencia: {escape(x['competencia'])}")
+    pasos = [p for p in (x.get("pasos") or []) if p][:4]
+    if pasos:
+        out.append("👣 <b>Pasos</b> <i>(según el README, compruébalo)</i>:")
+        out += [f"   {i}. {escape(corta(p, 160))}" for i, p in enumerate(pasos, 1)]
+    if x.get("sin_ia"):
+        out.append("<i>(sin IA)</i>")
+    return "".join("\n  " + o for o in out)
 
 
 def trocear(texto, limite=3500):

@@ -18,7 +18,7 @@ Nunca avisa de descargas de juegos ni de volcados.
 ## Niveles
 
 - 🔥 **Urgente (9-10):** llega al momento, también de madrugada. Por ejemplo, un exploit para un firmware más alto de lo conocido, una versión nueva de un repo clave o un firmware nuevo de Sony.
-- ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen diario** (09:00, hora de Madrid).
+- ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen** de las 09:00 y a la **actualización** de las 18:00 (hora de Madrid), con lo nuevo desde el anterior. Los ⭐ salen con detalle: idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos.
 - Por debajo de 3 (solo traducciones, builds automáticas…), nada.
 
 Si la IA (`SUPER_IA_URL`: primero `groq`, rápido; si no contesta o se queda sin cupo, `auto`) responde, cada aviso lleva:
@@ -67,7 +67,7 @@ El `schedule` de GitHub va como respaldo cada 15 minutos, pero no es fiable. Lo 
 
 - **`fuentes.txt`**: añadir o quitar repos, listas, canales de YouTube o prensa (una línea cada uno).
 - **`config.json`**:
-  - `hora_resumen` y `silencio`: horarios.
+  - `horas_resumen` (09:00 y 18:00: el resumen de la mañana y la actualización de la tarde, con lo nuevo desde el anterior) y `silencio`: horarios.
   - `fuego_rompe_silencio`: si los 🔥 llegan de madrugada.
   - `umbral_fuego`: nota mínima para avisar al momento.
   - `umbrales_estrellas`: estrellas que tiene que alcanzar un repo nuevo.

@@ -404,7 +404,7 @@ def enviar_cola(e, conf, ruta):
         c = e["resumen"].get("congelado")
         try:
             num = int(str(rec[0]).rsplit(":", 1)[1])
-            if c and c.get("dia") == str(rec[0]).split(":")[1]:
+            if c and (c.get("id") or c.get("dia")) == str(rec[0]).split(":")[1]:
                 c["enviados"] = max(c.get("enviados", 0), num + 1)
         except (ValueError, IndexError):
             pass
@@ -442,13 +442,38 @@ def _apuntar_enviado(e, n, mid):
         st["ult_aviso"] = int(time.time())
 
 
+def horas_resumen(conf):
+    """Horas del resumen (p. ej. 09:00 y la actualización de las 18:00)."""
+    return sorted(conf.get("horas_resumen") or [conf.get("hora_resumen", "09:00")], key=_hm)
+
+
+def turno_actual(conf, dt=None):
+    """El último turno de resumen que ya ha llegado hoy («2026-11-23 18:00»), o None si aún no toca."""
+    dt = dt or ahora_local(conf)
+    ya = [h for h in horas_resumen(conf) if dt.hour * 60 + dt.minute >= _hm(h)]
+    return f"{dt.strftime('%Y-%m-%d')} {ya[-1]}" if ya else None
+
+
+def turno_hecho(e, conf):
+    """Hasta qué momento está cubierto el resumen. Compatible con el estado antiguo (solo «ultimo_dia»)."""
+    r = e["resumen"]
+    if r.get("ultimo_turno"):
+        return r["ultimo_turno"]
+    return f"{r['ultimo_dia']} {horas_resumen(conf)[0]}" if r.get("ultimo_dia") else ""
+
+
 def toca_resumen(e, conf, forzar=False):
-    hoy = ahora_local(conf)
     if forzar:
         return True
-    if e["resumen"].get("ultimo_dia") == hoy.strftime("%Y-%m-%d"):
-        return False
-    return hoy.hour * 60 + hoy.minute >= _hm(conf["hora_resumen"])
+    t = turno_actual(conf)
+    return bool(t) and t > turno_hecho(e, conf)
+
+
+def _marcar_resumen(e, conf, dia):
+    """Un resumen enviado a las HH:MM cubre todos los turnos de hasta esa hora."""
+    r = e["resumen"]
+    r["ultimo_dia"] = max(dia, r.get("ultimo_dia") or "")
+    r["ultimo_turno"] = max(ahora_local(conf).strftime("%Y-%m-%d %H:%M"), turno_hecho(e, conf))
 
 
 def agrupar(items):
@@ -481,13 +506,15 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         return
     if not toca_resumen(e, conf, forzar) and not pendiente:
         return
-    dia = ahora_local(conf).strftime("%Y-%m-%d")
+    ahora = ahora_local(conf)
+    dia = ahora.strftime("%Y-%m-%d")
     r = e["resumen"]
     if not r.get("congelado"):
         crudos = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))[:60]
         items = agrupar(crudos)[:40]
         if not items:
-            r["ultimo_dia"] = dia
+            _marcar_resumen(e, conf, dia)
+            estado.guardar(e, ruta)
             return
         try:                               # competencia al día justo antes de enviar
             competencia.refrescar(cfg, e)
@@ -499,8 +526,12 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         claves = {x.get("clave") for x in crudos}
         e["pendientes"] = [x for x in e["pendientes"] if x.get("clave") not in claves]
         r["anterior"] = {"dia": dia, "items": crudos}        # para «repetir_resumen»
-        trozos = formato.trocear(formato.resumen(items, conf["zona"]))
-        r["congelado"] = {"dia": dia, "trozos": trozos, "enviados": 0,
+        # El de la mañana es el resumen; los de después, la actualización de lo nuevo desde el anterior
+        tarde = _hm(ahora.strftime("%H:%M")) >= _hm(horas_resumen(conf)[-1]) and len(horas_resumen(conf)) > 1
+        desde = turno_hecho(e, conf)
+        desde = desde[-5:] if tarde and desde[:10] == dia else ""
+        trozos = formato.trocear(formato.resumen(items, conf["zona"], tarde=tarde, desde=desde))
+        r["congelado"] = {"dia": dia, "id": ahora.strftime("%Y-%m-%dT%H%M"), "trozos": trozos, "enviados": 0,
                           "url": items[0].get("url") or "https://github.com"}
         estado.guardar(e, ruta)
     c = r["congelado"]
@@ -508,13 +539,14 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         if i < c["enviados"]:
             continue                    # ya salió en una ronda anterior
         boton = telegram.boton(c["url"], f"🗞️ Resumen {i + 1}/{len(c['trozos'])} · {c['dia']}")
-        mid = telegram.enviar(e, trozo, boton, guardar=guardar_fn(e, ruta), clave=f"resumen:{c['dia']}:{i}")
+        mid = telegram.enviar(e, trozo, boton, guardar=guardar_fn(e, ruta),
+                              clave=f"resumen:{c.get('id') or c['dia']}:{i}")
         if mid is None and telegram._token():
             return                      # se reintenta en la próxima ronda
         c["enviados"] = i + 1
         estado.guardar(e, ruta)
     r.pop("congelado", None)
-    r["ultimo_dia"] = max(c["dia"], r.get("ultimo_dia") or "")
+    _marcar_resumen(e, conf, c["dia"])
     estado.guardar(e, ruta)
 
 
@@ -531,6 +563,7 @@ def modo_ronda(e, cfg, conf, ruta):
     if primera:
         e["sembrado_global"] = True
         e["resumen"]["ultimo_dia"] = ahora_local(conf).strftime("%Y-%m-%d")
+        e["resumen"]["ultimo_turno"] = ahora_local(conf).strftime("%Y-%m-%d") + " 23:59"   # hoy, nada
         print("[ronda] primera ronda: todo sembrado en silencio")
         estado.guardar(e, ruta)
         vigilados = len(cfg["repos"]) + len(e["descubiertos"])

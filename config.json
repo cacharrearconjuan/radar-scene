@@ -1,6 +1,9 @@
 {
   "zona": "Europe/Madrid",
-  "hora_resumen": "09:00",
+  "horas_resumen": [
+    "09:00",
+    "18:00"
+  ],
   "silencio": [
     "00:30",
     "08:00"

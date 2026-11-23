@@ -649,3 +649,49 @@ class TestAjustesIA(Base):
         self.assertNotIn("nino", t.lower())
         self.assertEqual(sum("ps5upload" in l for l in t.splitlines() if l.startswith("•")), 1)
         self.assertIn("2 versiones", t)
+
+
+class TestTurnosResumen(unittest.TestCase):
+    def setUp(self):
+        self.conf = radar.cargar_conf()
+
+    def _a_las(self, hh, mm, dia=23):
+        from zoneinfo import ZoneInfo
+        dt = datetime(2026, 11, dia, hh, mm, tzinfo=ZoneInfo("Europe/Madrid"))
+        return mock.patch.object(radar, "ahora_local", lambda c: dt)
+
+    def test_manana_y_tarde(self):
+        e = {}
+        e["resumen"] = {"ultimo_dia": "2026-11-22", "ultimo_turno": "2026-11-22 18:01"}
+        with self._a_las(8, 59):
+            self.assertFalse(radar.toca_resumen(e, self.conf))
+        with self._a_las(9, 1):
+            self.assertTrue(radar.toca_resumen(e, self.conf))
+            radar._marcar_resumen(e, self.conf, "2026-11-23")
+            self.assertFalse(radar.toca_resumen(e, self.conf))
+        with self._a_las(17, 59):
+            self.assertFalse(radar.toca_resumen(e, self.conf))
+        with self._a_las(18, 0):
+            self.assertTrue(radar.toca_resumen(e, self.conf), "a las 18 toca la actualización")
+            radar._marcar_resumen(e, self.conf, "2026-11-23")
+        with self._a_las(23, 0):
+            self.assertFalse(radar.toca_resumen(e, self.conf))
+
+    def test_estado_antiguo_solo_con_ultimo_dia(self):
+        e = {"resumen": {"ultimo_dia": "2026-11-23"}}     # ya salió el de las 9 con la versión anterior
+        with self._a_las(12, 0):
+            self.assertFalse(radar.toca_resumen(e, self.conf))
+        with self._a_las(18, 5):
+            self.assertTrue(radar.toca_resumen(e, self.conf))
+
+    def test_detalle_de_los_interesantes(self):
+        from radar import formato
+        x = {"nivel": "interesante", "nota": 7, "titulo": "PSWloader", "repo": "github.com:a/pswloader",
+             "url": "https://github.com/a/pswloader", "idea_titulo": "Windows 11 en la PS5",
+             "angulo": "¿Windows en tu PS5?", "resumen": "Arranca Windows 11 nativo.",
+             "para_que": "Para usar la PS5 como PC.", "fw_ia": "3.00-4.51", "pasos": ["Carga el payload", "Reinicia"],
+             "competencia": "nadie aún", "estado_txt": "release publicada"}
+        t = formato.resumen([x], "Europe/Madrid", tarde=True, desde="09:02")
+        for trozo in ("Actualización de la tarde", "desde el resumen de las 09:02", "🎬", "Qué es", "Para qué sirve",
+                      "Firmware: 3.00-4.51", "Competencia: nadie aún", "1. Carga el payload", "Gancho"):
+            self.assertIn(trozo, t)
