@@ -21,7 +21,7 @@ Nunca avisa de descargas de juegos ni de volcados.
 - ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen diario** (09:00, hora de Madrid).
 - Por debajo de 3 (solo traducciones, builds automáticas…), nada.
 
-Si la IA (`SUPER_IA_URL`, modelo `auto`) responde, cada aviso lleva:
+Si la IA (`SUPER_IA_URL`: primero `groq`, rápido; si no contesta o se queda sin cupo, `auto`) responde, cada aviso lleva:
 - **Qué es** y **para qué sirve**, en castellano.
 - **Idea de vídeo**: título y gancho.
 - **Paso a paso**: sacado del README del repo y de las notas de la versión. Si no hay datos, no se inventa nada.
@@ -71,7 +71,8 @@ El `schedule` de GitHub va como respaldo cada 15 minutos, pero no es fiable. Lo 
   - `fuego_rompe_silencio`: si los 🔥 llegan de madrugada.
   - `umbral_fuego`: nota mínima para avisar al momento.
   - `umbrales_estrellas`: estrellas que tiene que alcanzar un repo nuevo.
-  - `ia.modelo`: modelo de la pasarela de IA.
+  - `ia.modelo`: modelo principal de la pasarela (`groq`), con su `timeout`, `max_tokens` (bajo: Groq lo cuenta contra su tope de 8.000 tokens/min) y `separacion` (segundos mínimos entre dos llamadas suyas).
+  - `ia.respaldo`: el modelo que se prueba si el principal falla (`auto`, con `timeout_respaldo`).
 - **Estado:** el bot guarda lo que ya ha visto en la rama `estado` (`estado.json`). Para empezar de cero, borra esa rama.
 
 ## Pruebas

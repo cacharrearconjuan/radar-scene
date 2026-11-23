@@ -262,6 +262,17 @@ class TestRondas(Base):
         self.assertEqual(sum("etaHEN" in m["texto"] for m in self.m.tg.del_bot), 1)
         self.assertEqual(e["cola"], [])
 
+    def test_groq_sin_cupo_pasa_a_auto(self):
+        self.ronda()
+        self.m.ia = "groq_429"
+        self.m.releases["etaHEN/etaHEN"].append(rel(11, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.ronda()
+        t = self.m.tg.del_bot[-1]["texto"]
+        self.assertIn("Resumen de prueba", t)
+        self.assertEqual(self.m.modelos_pedidos[-2:], ["groq", "auto"])
+        self.assertEqual(self.m.ia_datos[-1]["max_tokens"], 8000, "el respaldo conserva su margen")
+        self.assertNotIn("reasoning_effort", self.m.ia_datos[-1])
+
     def test_ia_funciona_y_ia_dice_no(self):
         self.ronda()
         self.m.ia = "ok"
@@ -270,7 +281,9 @@ class TestRondas(Base):
         t = self.m.tg.del_bot[-1]["texto"]
         self.assertIn("Resumen de prueba", t)
         self.assertNotIn("(sin IA)", t)
-        self.assertEqual(self.m.ultimo_modelo, "auto")
+        self.assertEqual(self.m.ultimo_modelo, "groq")
+        self.assertEqual(self.m.ia_datos[-1]["max_tokens"], 2500, "Groq va con max_tokens bajo")
+        self.assertEqual(self.m.ia_datos[-1]["reasoning_effort"], "low")
         self.assertIn("Para qué sirve", t)
         self.assertIn("&lt;b&gt;sin PC&lt;/b&gt;", t, "lo que dice la IA se escapa")
         self.assertIn("Idea de vídeo", t)
@@ -583,7 +596,7 @@ class TestIA(Base):
         self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "- Added support for firmware 13.60 HEN", 1))
         self.ronda()
         t = self.m.tg.del_bot[-1]["texto"]
-        self.assertIn("sin IA: auto: sin conexión con super-ia", t)
+        self.assertIn("sin IA: groq: sin conexión con super-ia)", t)
         self.assertNotIn("ejemplo", t)
 
     def test_json_con_adornos(self):

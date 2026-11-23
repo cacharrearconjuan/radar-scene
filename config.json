@@ -21,8 +21,15 @@
   },
   "ia": {
     "activa": true,
-    "modelo": "auto",
-    "timeout": 200
+    "modelo": "groq",
+    "timeout": 60,
+    "max_tokens": 2500,
+    "parametros": {
+      "reasoning_effort": "low"
+    },
+    "separacion": 65,
+    "respaldo": "auto",
+    "timeout_respaldo": 200
   },
   "sony": [
     "https://www.playstation.com/es-es/support/hardware/ps5/system-software-info/",

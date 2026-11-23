@@ -58,13 +58,15 @@ class FalloIA(Exception):
     pass
 
 
-def _pedir_modelo(modelo, timeout, contenido):
+def _pedir_modelo(modelo, timeout, contenido, max_tokens=8000, extra=None):
     """Una llamada. Devuelve el dict de la IA o lanza FalloIA con un motivo legible y sin datos privados."""
     # Modelos que «piensan» (MiniMax, DeepSeek…): el razonamiento cuenta dentro de max_tokens,
-    # así que hace falta mucho margen o la respuesta llega vacía
-    datos = {"model": modelo, "temperature": 0.2, "max_tokens": 8000,
+    # así que hace falta mucho margen o la respuesta llega vacía. Groq, en cambio, cuenta
+    # max_tokens contra su tope de tokens por minuto, así que con él va más bajo (config).
+    datos = {"model": modelo, "temperature": 0.2, "max_tokens": max_tokens,
              "messages": [{"role": "system", "content": SISTEMA},
                           {"role": "user", "content": contenido}]}
+    datos.update(extra or {})
     t0 = time.time()
     r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
                   cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
@@ -76,6 +78,8 @@ def _pedir_modelo(modelo, timeout, contenido):
         if "Timeout" in r.error or "timed out" in r.error or seg >= timeout - 1:
             raise FalloIA(f"tiempo agotado ({seg} s)")
         raise FalloIA("se cortó la conexión")
+    if r.status == 429:
+        raise FalloIA("cupo por minuto agotado (429)")
     if not r.ok:
         raise FalloIA(f"HTTP {r.status}")
     try:
@@ -113,6 +117,16 @@ def _extraer_json(txt):
     return None
 
 
+def _intentos(c):
+    """(modelo, timeout, max_tokens, parámetros extra, separación en s): el principal y, si hay, el de respaldo."""
+    out = [(c.get("modelo", "review"), c.get("timeout", 100), c.get("max_tokens", 8000),
+            c.get("parametros") or {}, c.get("separacion", 0))]
+    if c.get("respaldo"):
+        out.append((c["respaldo"], c.get("timeout_respaldo", 50), c.get("max_tokens_respaldo", 8000),
+                    c.get("parametros_respaldo") or {}, c.get("separacion_respaldo", 0)))
+    return out
+
+
 def enriquecer(n, e, conf, ctx, readme=""):
     """Nunca lanza excepciones: si algo falla devuelve None, deja el motivo en n["ia_motivo"]
     y el aviso sale sin IA. Prueba el modelo principal y, si falla, el de respaldo."""
@@ -129,18 +143,25 @@ def enriquecer(n, e, conf, ctx, readme=""):
         contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
                      f"Versión: {n.get('tag')}\nNotas:\n{str(n.get('texto') or '')[:3000]}\n\n"
                      f"README del proyecto:\n{str(readme or '(no disponible)')[:4000]}")
-        intentos = [(conf["ia"].get("modelo", "review"), conf["ia"].get("timeout", 100))]
-        if conf["ia"].get("respaldo"):
-            intentos.append((conf["ia"]["respaldo"], conf["ia"].get("timeout_respaldo", 50)))
         motivos, out = [], None
-        for modelo, timeout in intentos:
+        for modelo, timeout, max_tokens, extra, separacion in _intentos(conf["ia"]):
+            # Proveedores con tope de tokens por minuto (Groq): espaciar sus llamadas
+            ultimo = ctx.setdefault("ia_ultima_llamada", {}).get(modelo)
+            if separacion and ultimo is not None:
+                espera = separacion - (time.time() - ultimo)
+                if espera > 0:
+                    print(f"[ia] espero {int(espera) + 1} s antes de llamar otra vez a {modelo}")
+                    time.sleep(espera)
             t0 = time.time()
+            ctx["ia_ultima_llamada"][modelo] = t0
             try:
-                out = _pedir_modelo(modelo, timeout, contenido)
+                out = _pedir_modelo(modelo, timeout, contenido, max_tokens, extra)
                 break
             except FalloIA as ex:
                 motivos.append(f"{modelo}: {ex}")
                 print(f"[ia] {modelo}: {ex}")
+                if "sin conexión" in str(ex):
+                    break            # el respaldo va por la misma pasarela: no hay a quién preguntar
             finally:
                 ctx["ia_segundos"] = ctx.get("ia_segundos", 0) + time.time() - t0
         if out is None:

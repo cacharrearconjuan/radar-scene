@@ -102,6 +102,9 @@ class Mundo:
                 return red.Resp(0, error="URLError: timed out")
             if self.ia == "review_lenta" and datos.get("model") == "review":
                 return red.Resp(0, error="TimeoutError")
+            self.ia_datos = getattr(self, "ia_datos", []) + [datos]
+            if self.ia == "groq_429" and datos.get("model") == "groq":
+                return red.Resp(429)
             contenido = datos["messages"][1]["content"]
             disp = self.ia != "dice_no"
             self.ultimo_prompt = contenido
