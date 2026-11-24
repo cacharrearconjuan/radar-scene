@@ -31,6 +31,8 @@
       "reasoning_effort": "low"
     },
     "separacion": 65,
+    "nota_minima": 3,
+    "max_llamadas": 4,
     "respaldo": "auto",
     "timeout_respaldo": 200
   },

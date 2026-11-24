@@ -308,7 +308,9 @@ def evaluar(novedades, e, cfg, conf, ctx):
             if n["nivel"] == "descartado":
                 continue
             # IA (solo lo que ya promete)
-            if n["nota"] >= 6 and llamadas_ia < 3:
+            # Desde el 24-nov también los 📋 (nota 3-5): con Groq es rápido y así llevan su frase y la IA
+            # aparta lo que no es de la scene. Los de nota alta van primero (por_repo ya viene ordenado).
+            if n["nota"] >= conf["ia"].get("nota_minima", 6) and llamadas_ia < conf["ia"].get("max_llamadas", 3):
                 llamadas_ia += 1
                 res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
                 if not ia.combinar(n, res, conf["umbral_fuego"]):
