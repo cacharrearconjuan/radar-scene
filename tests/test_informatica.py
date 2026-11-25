@@ -172,3 +172,27 @@ class TestRevisionInformatica(TestInformatica):
         for malo in ["Solana trading bot", "Browser info stealer", "KMS activator for Windows", "cheat engine tables"]:
             self.assertTrue(inf.RE_FUERA.search(malo), malo)
         self.assertNotIn("t.me", inf._limpio("Únete en t.me/canal y www.spam.com o bit.ly/x", 200))
+
+
+class TestGemini(TestInformatica):
+    def test_relleno_no_mete_descartados_ni_duplica(self):
+        rd = Red()
+
+        def falso(url, cab, datos):
+            if "chat/completions" in url:
+                out = {"repos": [
+                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "selfhosted", "nota": 8,
+                     "para_que": "a", "idea_video": "b", "dificultad": "media", "ofensivo": False},
+                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "selfhosted", "nota": 8,
+                     "para_que": "a", "idea_video": "b", "dificultad": "media", "ofensivo": False},
+                    {"repo": "someone/winutil-pro", "util": True, "categoria": "herramientas", "nota": 7,
+                     "para_que": "x", "idea_video": "y", "dificultad": "fácil", "ofensivo": True}]}
+                return red.Resp(200, json.dumps({"choices": [{"message": {"content": json.dumps(out)}}]}).encode())
+            return rd(url, cab, datos)
+        red.FALSO = falso
+        inf.DESCARTADOS_IA.clear()
+        with mock.patch.object(inf, "toca", lambda e: True):
+            inf.main(["resumen", "--estado", self.ruta])
+        t = rd.tg[-1]
+        self.assertEqual(t.count("lab/selfhost-panel</a>"), 1)
+        self.assertNotIn("winutil-pro", t)

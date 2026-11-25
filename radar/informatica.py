@@ -246,6 +246,9 @@ def _nombre(x):
     return "/".join(x.split("/")[:2])
 
 
+DESCARTADOS_IA = set()
+
+
 def valorar_con_ia(cands, e, conf_ia):
     """Una sola llamada para todos. Devuelve (elegidos, motivo_si_falla)."""
     lote = cands[:CONF["candidatos_ia"]]
@@ -266,13 +269,15 @@ def valorar_con_ia(cands, e, conf_ia):
     if not isinstance(lista, list) or not lista:
         return None, "la IA respondió en un formato inesperado"
     por_repo = {c["repo"].lower(): c for c in lote}
-    elegidos, casados = [], 0
+    elegidos, casados, vistos = [], 0, set()
     for x in lista:
         if not isinstance(x, dict):
             continue
-        c = por_repo.get(_nombre(x.get("repo")))
-        if not c:
+        k = _nombre(x.get("repo"))
+        c = por_repo.get(k)
+        if not c or k in vistos:             # la IA a veces repite un repo
             continue
+        vistos.add(k)
         casados += 1
         ofensivo = x.get("ofensivo") is True or str(x.get("ofensivo")).lower() == "true"
         util = not (x.get("util") is False or str(x.get("util")).lower() == "false")
@@ -281,7 +286,10 @@ def valorar_con_ia(cands, e, conf_ia):
             nota = max(1, min(10, int(float(x.get("nota")))))
         except (TypeError, ValueError):
             nota = 0
-        if ofensivo or not util or cat not in CATEGORIAS or nota < CONF["nota_minima"]:
+        if ofensivo or not util:
+            DESCARTADOS_IA.add(k)            # que el relleno sin IA no lo vuelva a meter
+            continue
+        if cat not in CATEGORIAS or nota < CONF["nota_minima"]:
             continue
         c.update(categoria=cat, nota=nota, para_que=_limpio(x.get("para_que"), 180),
                  idea=_limpio(x.get("idea_video"), 90), dificultad=_limpio(x.get("dificultad"), 12))
@@ -384,7 +392,8 @@ def ejecutar(modo, ruta):
         elegidos = sin_ia(cands)
     elif len(elegidos) < 3:        # la IA fue muy estricta: se completa con lo que más sube
         ya = {c["repo"] for c in elegidos}
-        extra = [dict(c) for c in sin_ia([c for c in cands if c["repo"] not in ya])][:3 - len(elegidos)]
+        extra = [dict(c) for c in sin_ia([c for c in cands if c["repo"] not in ya
+                                          and c["repo"].lower() not in DESCARTADOS_IA])][:3 - len(elegidos)]
         elegidos += extra
     texto = mensaje(elegidos, motivo, prueba=(modo == "prueba"))
     trozos = [texto] if len(texto) < 3900 else _trocear(texto)
