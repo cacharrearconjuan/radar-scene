@@ -12,6 +12,7 @@
   "umbral_fuego": 9,
   "umbral_resumen": 3,
   "umbrales_estrellas": [
+    25,
     50,
     200,
     1000
@@ -24,17 +25,48 @@
   },
   "ia": {
     "activa": true,
-    "modelo": "groq",
-    "timeout": 60,
-    "max_tokens": 2500,
-    "parametros": {
-      "reasoning_effort": "low"
-    },
-    "separacion": 65,
     "nota_minima": 3,
     "max_llamadas": 4,
-    "respaldo": "auto",
-    "timeout_respaldo": 200
+    "segundos_ronda": 420,
+    "proveedores": [
+      {
+        "nombre": "groq-directo",
+        "url": "https://api.groq.com/openai/v1",
+        "key_env": "GROQ_API_KEY",
+        "modelo": "openai/gpt-oss-120b",
+        "timeout": 60,
+        "max_tokens": 2500,
+        "parametros": {
+          "reasoning_effort": "low"
+        },
+        "separacion": 65,
+        "cupo": "groq"
+      },
+      {
+        "nombre": "groq",
+        "url_env": "SUPER_IA_URL",
+        "key_env": "SUPER_IA_KEY",
+        "pasarela": true,
+        "modelo": "groq",
+        "timeout": 60,
+        "max_tokens": 2500,
+        "parametros": {
+          "reasoning_effort": "low"
+        },
+        "separacion": 65,
+        "cupo": "groq",
+        "omitir_si": "groq-directo"
+      },
+      {
+        "nombre": "auto",
+        "url_env": "SUPER_IA_URL",
+        "key_env": "SUPER_IA_KEY",
+        "pasarela": true,
+        "modelo": "auto",
+        "timeout": 200,
+        "max_tokens": 8000
+      }
+    ]
   },
   "sony": [
     "https://www.playstation.com/es-es/support/hardware/ps5/system-software-info/",

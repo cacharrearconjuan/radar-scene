@@ -128,8 +128,12 @@ def puntuar(n, e, conf):
     if t == "repo_nuevo":
         u = n.get("umbral", 50)
         estrellas = n.get("estrellas", 0)
-        nota = 9 if u >= 1000 else 8 if u >= 200 else 6
+        nota = 9 if u >= 1000 else 8 if u >= 200 else 6 if u >= 50 else 5
         raz.append(f"repo nuevo con {estrellas}★")
+        if n.get("autor_clave"):
+            # Un repo nuevo de quien hace los exploits/HEN interesa aunque aún no tenga estrellas
+            nota = max(nota, 7 if n.get("relevante") else 6)
+            raz.insert(0, f"de {n['autor_clave']}, autor de repos clave")
         if fw.max > expl_max:
             raz.insert(0, f"dice soportar {firmware.fmt(fw.max)} (por encima de lo conocido)")
             if estrellas >= 1000:

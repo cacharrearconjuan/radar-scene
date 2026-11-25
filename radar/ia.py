@@ -38,31 +38,71 @@ SISTEMA = (
 
 
 def _endpoint(url):
-    url = (url or "").rstrip("/")
+    """Completa la URL hasta /chat/completions. Respeta las que ya traen su versión
+    (…/v1, …/v1beta/openai, …/openai/v1); a un host pelado le añade /v1."""
+    url = (url or "").strip().rstrip("/")
+    if not url:
+        return ""
+    if "://" not in url:
+        url = "https://" + url
     if url.endswith("/chat/completions"):
         return url
-    if not url.endswith("/v1"):
-        url += "/v1"
-    return url + "/chat/completions"
+    if re.search(r"/v\d+(beta)?(/openai)?$|/openai(/v\d+)?$", url):
+        return url + "/chat/completions"
+    return url + "/v1/chat/completions"
 
 
-def pasarela_viva(timeout=5):
-    """Sondeo rápido (GET /v1/models): ¿responde la pasarela? No gasta cupo de ningún modelo."""
-    url = _endpoint(os.environ.get("SUPER_IA_URL")).rsplit("/chat/completions", 1)[0] + "/models"
-    r = red.pedir(url, cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
-                  timeout=timeout)
+def _p_url(p):
+    return _endpoint(p.get("url") or os.environ.get(p.get("url_env") or "", ""))
+
+
+def _p_key(p):
+    return os.environ.get(p.get("key_env") or "", "")
+
+
+def _todos(c):
+    """Proveedores configurados, en orden. Formato antiguo (modelo/respaldo) = todo por super-ia."""
+    if c.get("proveedores"):
+        return c["proveedores"]
+    out = [{"nombre": c.get("modelo", "review"), "modelo": c.get("modelo", "review"), "url_env": "SUPER_IA_URL",
+            "key_env": "SUPER_IA_KEY", "pasarela": True, "timeout": c.get("timeout", 100),
+            "max_tokens": c.get("max_tokens", 8000), "parametros": c.get("parametros") or {},
+            "separacion": c.get("separacion", 0)}]
+    if c.get("respaldo"):
+        out.append({"nombre": c["respaldo"], "modelo": c["respaldo"], "url_env": "SUPER_IA_URL",
+                    "key_env": "SUPER_IA_KEY", "pasarela": True, "timeout": c.get("timeout_respaldo", 50),
+                    "max_tokens": c.get("max_tokens_respaldo", 8000),
+                    "parametros": c.get("parametros_respaldo") or {}, "separacion": c.get("separacion_respaldo", 0)})
+    return out
+
+
+def proveedores(conf):
+    """Los que tienen URL y clave en este entorno (los demás se saltan en silencio)."""
+    listos = [p for p in _todos(conf["ia"]) if _p_url(p) and (not p.get("key_env") or _p_key(p))]
+    nombres = {p.get("nombre") for p in listos}
+    return [p for p in listos if not (p.get("omitir_si") and p["omitir_si"] in nombres)]
+
+
+def pasarela_viva(p=None, timeout=5):
+    """Sondeo rápido (GET …/models) de la pasarela: no gasta cupo de ningún modelo."""
+    p = p or {"url_env": "SUPER_IA_URL", "key_env": "SUPER_IA_KEY"}
+    url = _p_url(p).rsplit("/chat/completions", 1)[0] + "/models"
+    r = red.pedir(url, cabeceras={"Authorization": "Bearer " + _p_key(p)}, timeout=timeout)
     return r.status in (200, 401, 403)
 
 
 def disponible_ia(e, conf, ctx=None):
-    if not conf["ia"].get("activa") or not os.environ.get("SUPER_IA_URL"):
+    lista = proveedores(conf)
+    if not conf["ia"].get("activa") or not lista:
         return False
     f = e["ia"].get("fallos", 0)
     if f >= 3 and e.get("ronda", 0) % 6:
+        if any(not p.get("pasarela") for p in lista):
+            return True       # hay proveedores directos: no dependen de la LXC
         # Cortacircuitos: en vez de esperar 6 rondas, un sondeo de segundos por ronda
         ctx = ctx if ctx is not None else {}
         if "ia_viva" not in ctx:
-            ctx["ia_viva"] = pasarela_viva()
+            ctx["ia_viva"] = pasarela_viva(lista[0])
             print(f"[ia] pasarela tras {f} fallos: {'responde' if ctx['ia_viva'] else 'sigue sin responder'}")
         return ctx["ia_viva"]
     return True
@@ -72,23 +112,23 @@ class FalloIA(Exception):
     pass
 
 
-def _pedir_modelo(modelo, timeout, contenido, max_tokens=8000, extra=None):
+def _pedir_modelo(p, contenido):
     """Una llamada. Devuelve el dict de la IA o lanza FalloIA con un motivo legible y sin datos privados."""
     # Modelos que «piensan» (MiniMax, DeepSeek…): el razonamiento cuenta dentro de max_tokens,
     # así que hace falta mucho margen o la respuesta llega vacía. Groq, en cambio, cuenta
     # max_tokens contra su tope de tokens por minuto, así que con él va más bajo (config).
-    datos = {"model": modelo, "temperature": 0.2, "max_tokens": max_tokens,
+    timeout = p.get("timeout", 100)
+    datos = {"model": p["modelo"], "temperature": 0.2, "max_tokens": p.get("max_tokens", 8000),
              "messages": [{"role": "system", "content": SISTEMA},
                           {"role": "user", "content": contenido}]}
-    datos.update(extra or {})
+    datos.update(p.get("parametros") or {})
     t0 = time.time()
-    r = red.pedir(_endpoint(os.environ.get("SUPER_IA_URL")), datos=datos,
-                  cabeceras={"Authorization": "Bearer " + os.environ.get("SUPER_IA_KEY", "")},
+    r = red.pedir(_p_url(p), datos=datos, cabeceras={"Authorization": "Bearer " + _p_key(p)},
                   timeout=timeout, metodo="POST")
     seg = int(time.time() - t0)
     if r.status == 0:
         if r.error.startswith("URLError"):
-            raise FalloIA("sin conexión con super-ia")
+            raise FalloIA("sin conexión con " + ("super-ia" if p.get("pasarela") else p.get("nombre", "la IA")))
         if "Timeout" in r.error or "timed out" in r.error or seg >= timeout - 1:
             raise FalloIA(f"tiempo agotado ({seg} s)")
         raise FalloIA("se cortó la conexión")
@@ -113,7 +153,7 @@ def _pedir_modelo(modelo, timeout, contenido, max_tokens=8000, extra=None):
         raise FalloIA(f"respuesta vacía ({seg} s, fin: {fin})")
     if out is None:
         raise FalloIA(("respuesta sin JSON" if "{" not in txt else "JSON incompleto") + f" (fin: {fin})")
-    print(f"[ia] {modelo} respondió en {seg} s")
+    print(f"[ia] {p.get('nombre')} respondió en {seg} s")
     return out
 
 
@@ -131,22 +171,12 @@ def _extraer_json(txt):
     return None
 
 
-def _intentos(c):
-    """(modelo, timeout, max_tokens, parámetros extra, separación en s): el principal y, si hay, el de respaldo."""
-    out = [(c.get("modelo", "review"), c.get("timeout", 100), c.get("max_tokens", 8000),
-            c.get("parametros") or {}, c.get("separacion", 0))]
-    if c.get("respaldo"):
-        out.append((c["respaldo"], c.get("timeout_respaldo", 50), c.get("max_tokens_respaldo", 8000),
-                    c.get("parametros_respaldo") or {}, c.get("separacion_respaldo", 0)))
-    return out
-
-
 def enriquecer(n, e, conf, ctx, readme=""):
     """Nunca lanza excepciones: si algo falla devuelve None, deja el motivo en n["ia_motivo"]
     y el aviso sale sin IA. Prueba el modelo principal y, si falla, el de respaldo."""
     try:
         if ctx.get("ia_fallos_ronda", 0) >= 2:
-            n["ia_motivo"] = "super-ia ya falló en esta ronda"
+            n["ia_motivo"] = "la IA ya falló en esta ronda"
             return None
         if not disponible_ia(e, conf, ctx):
             n["ia_motivo"] = "IA desactivada o en pausa tras varios fallos"
@@ -160,34 +190,39 @@ def enriquecer(n, e, conf, ctx, readme=""):
                      f"Versión: {n.get('tag')}\n<notas>\n{str(n.get('texto') or '')[:3000]}\n</notas>\n\n"
                      f"<readme>\n{str(readme or '(no disponible)')[:4000]}\n</readme>")
         motivos, out = [], None
-        for modelo, timeout, max_tokens, extra, separacion in _intentos(conf["ia"]):
+        for p in proveedores(conf):
+            nombre, timeout = p.get("nombre") or p["modelo"], p.get("timeout", 100)
+            if p.get("pasarela") and ctx.get("pasarela_caida"):
+                continue             # ya se vio caída en esta ronda: no perder tiempo
             # Proveedores con tope de tokens por minuto (Groq): espaciar sus llamadas
-            ultimo = ctx.setdefault("ia_ultima_llamada", {}).get(modelo)
-            if separacion and ultimo is not None:
-                espera = separacion - (time.time() - ultimo)
+            cupo = p.get("cupo") or nombre
+            ultimo = ctx.setdefault("ia_ultima_llamada", {}).get(cupo)
+            if p.get("separacion") and ultimo is not None:
+                espera = p["separacion"] - (time.time() - ultimo)
                 if espera > 0:
                     if ctx.get("ia_segundos", 0) + espera + timeout > limite:
-                        motivos.append(f"{modelo}: sin tiempo en esta ronda")
+                        motivos.append(f"{nombre}: sin tiempo en esta ronda")
                         continue
-                    print(f"[ia] espero {int(espera) + 1} s antes de llamar otra vez a {modelo}")
+                    print(f"[ia] espero {int(espera) + 1} s antes de llamar otra vez a {nombre}")
                     time.sleep(espera)
                     ctx["ia_segundos"] = ctx.get("ia_segundos", 0) + espera   # la espera también cuenta
             if ctx.get("ia_segundos", 0) + timeout > limite and motivos:
-                motivos.append(f"{modelo}: sin tiempo en esta ronda")      # el respaldo no cabe: no arriesgar
+                motivos.append(f"{nombre}: sin tiempo en esta ronda")      # el respaldo no cabe: no arriesgar
                 break
             t0 = time.time()
-            ctx["ia_ultima_llamada"][modelo] = t0
+            ctx["ia_ultima_llamada"][cupo] = t0
             try:
-                out = _pedir_modelo(modelo, timeout, contenido, max_tokens, extra)
+                out = _pedir_modelo(p, contenido)
                 break
             except FalloIA as ex:
-                motivos.append(f"{modelo}: {ex}")
-                print(f"[ia] {modelo}: {ex}")
-                if "sin conexión" in str(ex):
-                    break            # el respaldo va por la misma pasarela: no hay a quién preguntar
-                if re.match(r"HTTP 50[234]", str(ex)) and not pasarela_viva():
-                    motivos[-1] = f"{modelo}: sin conexión con super-ia ({ex})"
-                    break            # 502/503/504 y tampoco responde /models: la pasarela está caída
+                motivos.append(f"{nombre}: {ex}")
+                print(f"[ia] {nombre}: {ex}")
+                if p.get("pasarela"):
+                    if "sin conexión" in str(ex):
+                        ctx["pasarela_caida"] = True    # los demás de la pasarela tampoco llegarán
+                    elif re.match(r"HTTP 50[234]", str(ex)) and not pasarela_viva(p):
+                        motivos[-1] = f"{nombre}: sin conexión con super-ia ({ex})"
+                        ctx["pasarela_caida"] = True    # 502-504 y tampoco responde /models
             finally:
                 ctx["ia_segundos"] = ctx.get("ia_segundos", 0) + time.time() - t0
         if out is None:

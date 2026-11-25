@@ -8,7 +8,8 @@ Bot de Telegram que avisa de las novedades de la scene de PS5 **que ya están pu
 |---|---|
 | Repos clave de GitHub (`fuentes.txt`, secciones `[A]` y `[B]`) | Releases nuevas, commits y cambios de firmware en el README |
 | Lista oficial de PS5 Payload Manager y otras listas (`[listas]`) | Payloads nuevos y sus releases; los repos se añaden solos |
-| Búsqueda en GitHub | Repos de PS5 recién creados que superan 50, 200 o 1.000 estrellas (y tienen código) |
+| Búsqueda en GitHub | Repos de PS5 recién creados («ps5», «PlayStation 5» o «Prospero») que superan 25, 50, 200 o 1.000 estrellas (y tienen código) |
+| Autores clave | Repos nuevos de los autores de [A] y [B] (Gezine, EchoStretch, itsPLK…), desde la primera estrella, si tienen código |
 | Web oficial de Sony | Firmwares nuevos de PS5 |
 | Prensa (`[prensa]`) | Solo artículos de cosas ya publicadas y con enlace a la descarga |
 | YouTube (`[youtube]`) | Si la competencia ya lo ha sacado |
@@ -44,6 +45,7 @@ Si la IA no responde, el aviso sale igual, marcado «(sin IA)».
 | `TELEGRAM_CHAT_ID` | el chat_id del grupo (con el `-`) |
 | `SUPER_IA_URL` | la Base URL de la pasarela de IA, terminada en `/v1` (opcional) |
 | `SUPER_IA_KEY` | la clave de la pasarela pensada para GitHub (opcional) |
+| `GROQ_API_KEY` | clave de Groq (console.groq.com, gratis): la IA va directa a Groq sin depender de la pasarela (opcional) |
 
 ### 3. Primera prueba
 **Actions → radar → Run workflow**:
@@ -71,10 +73,9 @@ El `schedule` de GitHub va como respaldo cada 15 minutos, pero no es fiable. Lo 
   - `fuego_rompe_silencio`: si los 🔥 llegan de madrugada.
   - `umbral_fuego`: nota mínima para avisar al momento.
   - `umbrales_estrellas`: estrellas que tiene que alcanzar un repo nuevo.
-  - `ia.modelo`: modelo principal de la pasarela (`groq`), con su `timeout`, `max_tokens` (bajo: Groq lo cuenta contra su tope de 8.000 tokens/min) y `separacion` (segundos mínimos entre dos llamadas suyas).
+  - `ia.proveedores`: lista ordenada de IAs OpenAI-compatibles; se prueba una tras otra hasta que una responde. Cada una con `nombre`, `url` (o `url_env`), `key_env` (secreto con la clave), `modelo`, `timeout`, `max_tokens`, `parametros`, `separacion` (segundos entre llamadas que comparten `cupo`), `pasarela` (va por super-ia) y `omitir_si` (no usarla si otra está configurada). Las que no tienen su secreto se saltan. Por defecto: Groq directo → `groq` de super-ia (solo si no hay Groq directo) → `auto` de super-ia.
   - `ia.nota_minima` (3) y `ia.max_llamadas` (4): desde qué nota pasa una novedad por la IA y cuántas como mucho por ronda (primero las de más nota).
   - `ia.segundos_ronda` (420): tiempo máximo de IA por ronda, esperas incluidas (el paso tiene 11 min). `ia.pista_caida`: texto opcional del aviso cuando la pasarela no responde.
-  - `ia.respaldo`: el modelo que se prueba si el principal falla (`auto`, con `timeout_respaldo`).
 - **Estado:** el bot guarda lo que ya ha visto en la rama `estado` (`estado.json`). Para empezar de cero, borra esa rama.
 
 ## Pruebas

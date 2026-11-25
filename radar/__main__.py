@@ -191,6 +191,8 @@ def recoger(e, cfg, conf, ctx):
             tarea("gh:rel", fuentes.releases, e, d["clave"], d, ctx)
     if ronda % 6 == 1 or todo:
         tarea("gh:busqueda", fuentes.busqueda, e, cfg, conf, ctx)
+    if ronda % 6 == 4 or todo:
+        tarea("gh:autores", fuentes.busqueda_autores, e, cfg, conf, ctx)
     if ronda % 2 == 1 or todo:
         tarea("prensa", fuentes.prensa, e, cfg, ctx)
     eq = Equivalencias(e, cfg)
@@ -762,15 +764,22 @@ def modo_diagnostico(e, cfg, conf, ruta):
     for canal in cfg["youtube"]:
         cid = competencia.resolver(canal, e)
         p("YouTube " + canal["nombre"], bool(cid), "" if cid else "no se pudo resolver el canal")
-    if os.environ.get("SUPER_IA_URL"):
+    lista = ia.proveedores(conf)
+    if lista:
         n = {"tipo": "release", "repo": "prueba", "titulo": "Prueba", "tag": "1.0", "texto": "Prueba"}
         tmp = {"ia": {"fallos": 0}, "ronda": 1}
         t0 = time.time()
         res = ia.enriquecer(n, tmp, conf, {})
-        p("super-ia", bool(res), f"responde en {int(time.time() - t0)} s" if res else
+        nombres = ", ".join(x.get("nombre") or x["modelo"] for x in lista)
+        p(f"IA ({nombres})", bool(res), f"responde en {int(time.time() - t0)} s" if res else
           f"no responde ({tmp['ia'].get('ultimo_error', '')}); los avisos saldrán sin IA")
+        for x in lista:
+            if x.get("pasarela"):
+                viva = ia.pasarela_viva(x)
+                p("Pasarela super-ia", viva, "" if viva else "no responde (LXC, Docker o túnel)")
+                break
     else:
-        p("super-ia", False, "falta el secreto SUPER_IA_URL (los avisos saldrán sin IA)")
+        p("IA", False, "no hay ningún proveedor con su secreto (los avisos saldrán sin IA)")
     ok, user, st = telegram.soy_admin_o_existe()
     p("Bot de Telegram", ok, f"@{user}" if ok else f"HTTP {st}")
     lin += ["", f"Ronda: {e.get('ronda', 0)} · Repos vigilados: {len(cfg['repos']) + len(e['descubiertos'])}"

@@ -281,6 +281,40 @@ class TestRondas(Base):
         self.assertEqual(self.m.sondeos, 1)
         self.assertEqual(e["ia"]["fallos"], 0, "la IA vuelve en la misma ronda")
 
+    def test_groq_directo_funciona_aunque_la_lxc_este_caida(self):
+        self.ronda()
+        self.m.ia = "lxc_caida"
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "gsk_prueba"}):
+            self.m.releases["etaHEN/etaHEN"].append(rel(11, "3.0", "- Added support for firmware 13.60 HEN", 1))
+            self.ronda()
+        self.assertTrue(self.m.urls_ia[-1].startswith("https://api.groq.com/openai/v1/chat/completions"))
+        self.assertEqual(self.m.modelos_pedidos[-1], "openai/gpt-oss-120b")
+        self.assertNotIn("ia.example", " ".join(self.m.urls_ia), "con Groq directo no se pasa por super-ia/groq")
+        self.assertIn("Resumen de prueba", self.m.tg.del_bot[-1]["texto"])
+
+    def test_repo_nuevo_de_autor_clave_sin_estrellas(self):
+        self.ronda()                                              # siembra: lo que ya había no avisa
+        self.m.search_autores = {"items": [{"full_name": "Gezine/NuevoExploit", "fork": False,
+                                            "description": "PS5 kernel exploit for 13.xx", "topics": [],
+                                            "stargazers_count": 2, "html_url": "https://github.com/Gezine/NuevoExploit",
+                                            "created_at": iso(3)}]}
+        e = self.ronda()
+        pend = [x for x in e["pendientes"] if x.get("tipo") == "repo_nuevo"]
+        self.assertEqual(len(pend), 1)
+        self.assertGreaterEqual(pend[0]["nota"], 7)
+        self.assertIn("Gezine", pend[0]["titulo"])
+        e = self.ronda()                                          # no se repite
+        self.assertEqual(len([x for x in e["pendientes"] if x.get("tipo") == "repo_nuevo"]), 1)
+        self.assertTrue(any("user%3AGezine" in u for u in self.m.peticiones))
+
+    def test_endpoints(self):
+        from radar import ia
+        self.assertEqual(ia._endpoint("https://generativelanguage.googleapis.com/v1beta/openai"),
+                         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+        self.assertEqual(ia._endpoint("https://api.groq.com/openai/v1"), "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(ia._endpoint("super-ia.ejemplo.ts.net"), "https://super-ia.ejemplo.ts.net/v1/chat/completions")
+        self.assertEqual(ia._endpoint("https://x.ts.net/v1/"), "https://x.ts.net/v1/chat/completions")
+
     def test_groq_sin_cupo_pasa_a_auto(self):
         self.ronda()
         self.m.ia = "groq_429"

@@ -351,12 +351,14 @@ def listas(e, cfg, ctx):
 # ------------------------------------------------------------ repos nuevos (búsqueda)
 RE_RELEVANTE = re.compile(
     r"jailbreak|exploit|kernel|payload|homebrew|webkit|\bhen\b|kstuff|elf ?loader|"
-    r"\bjb\b|hypervisor|userland|firmware|\bfw\b|backport|emulator|\blinux\b|autoloader|\bpkg\b", re.I)
+    r"\bjb\b|hypervisor|userland|firmware|\bfw\b|backport|emulator|\blinux\b|autoloader|\bpkg\b|"
+    r"bd-?jb|y2jb|luac0re|umtx|\blapse\b|prospero", re.I)
 
 
 def busqueda(e, cfg, conf, ctx):
     desde = time.strftime("%Y-%m-%d", time.gmtime(time.time() - conf["busqueda_dias"] * 86400))
-    q = quote(f"ps5 in:name,description,topics created:>={desde} fork:false")
+    # No todos ponen «ps5»: «PlayStation 5» y «Prospero» (su nombre interno) también cuentan
+    q = quote(f'ps5 OR prospero OR "playstation 5" in:name,description,topics created:>={desde} fork:false')
     r = red.pedir(f"{API}/search/repositories?q={q}&sort=stars&order=desc&per_page=50")
     if not r.ok:
         salud(e, "busqueda", False, f"{r.status} {r.error}")
@@ -419,6 +421,74 @@ def busqueda(e, cfg, conf, ctx):
 
 RE_NO_CODIGO = re.compile(r"^(readme|license|licence|copying|\.gitignore|\.gitattributes|"
                           r".*\.(md|txt|png|jpe?g|gif|webp|svg))$", re.I)
+
+
+def autores_clave(cfg):
+    """Dueños de los repos [A] y [B] de GitHub: si crean un repo nuevo, interesa desde la primera estrella."""
+    return sorted({c.split(":", 1)[1].split("/")[0] for c, i in cfg["repos"].items()
+                   if c.startswith("github.com:") and i.get("tier") in ("A", "B")}, key=str.lower)
+
+
+def busqueda_autores(e, cfg, conf, ctx):
+    """Repos nuevos (de los últimos días) de los autores clave, aunque aún no tengan estrellas."""
+    desde = time.strftime("%Y-%m-%d", time.gmtime(time.time() - conf["busqueda_dias"] * 86400))
+    autores = autores_clave(cfg)
+    fst = e["feeds"].setdefault("busqueda_autores", {})
+    sembrada = fst.get("sembrado")
+    vistos = fst.setdefault("vistos", {})
+    excluir = {norm(c) for c in cfg["repos"]} | cfg["excluir"] | set(e["descubiertos"])
+    out, ok = [], True
+    for i in range(0, len(autores), 6):           # varias consultas cortas (GitHub limita su longitud)
+        users = " ".join(f"user:{a}" for a in autores[i:i + 6])
+        q = quote(f"{users} created:>={desde} fork:false")
+        r = red.pedir(f"{API}/search/repositories?q={q}&sort=updated&order=desc&per_page=50")
+        if not r.ok:
+            ok = False
+            salud(e, "busqueda", False, f"autores {r.status} {r.error}")
+            if r.status in (403, 429):
+                ctx["limite_github"] = True
+                break
+            continue
+        try:
+            items = r.json().get("items", [])
+        except (ValueError, AttributeError):
+            continue
+        for it in items:
+            if not isinstance(it, dict) or it.get("fork"):
+                continue
+            nombre = str(it.get("full_name", ""))
+            clave = "github.com:" + nombre
+            if not nombre or norm(clave) in excluir or nombre in vistos:
+                continue
+            if not sembrada:
+                vistos[nombre] = int(time.time())
+                continue
+            if RE_PROMESA.search(str(it.get("description") or "")) or not _tiene_codigo(clave):
+                continue                          # aún vacío o solo promete: se vuelve a mirar
+            vistos[nombre] = int(time.time())
+            autor, estrellas = nombre.split("/")[0], int(it.get("stargazers_count") or 0)
+            texto = f"{nombre} {it.get('description') or ''} {' '.join(it.get('topics') or [])}"
+            out.append({
+                "tipo": "repo_nuevo", "repo": clave, "repo_cfg": clave,
+                "titulo": f"Repo nuevo de {autor}: {nombre} ({estrellas}★)",
+                "tag": "autor", "tag_anterior": "", "url": it.get("html_url") or "",
+                "ts": int(time.time()), "creado": iso_ts(it.get("created_at")),
+                "texto": str(it.get("description") or ""), "prerelease": False, "n_assets": 0,
+                "primera": True, "estrellas": estrellas, "umbral": 0, "autor_clave": autor,
+                "relevante": bool(RE_RELEVANTE.search(texto) or re.search(r"ps5|playstation", texto, re.I)),
+            })
+            # Que la búsqueda por estrellas no lo repita hasta el escalón de 200
+            st = e["busqueda"].setdefault(nombre, {"umbrales": []})
+            st["umbrales"] = sorted(set(st["umbrales"]) | {u for u in conf["umbrales_estrellas"] if u < 200})
+            st["con_codigo"], st["visto"] = True, int(time.time())
+            e["descubiertos"].setdefault(norm(clave), {"clave": clave, "tier": "C", "alias": [nombre.split("/")[1]],
+                                                       "origen": "autor"})
+    if ok:
+        salud(e, "busqueda", True)
+    lim = time.time() - 60 * 86400
+    fst["vistos"] = {k: v for k, v in vistos.items() if v >= lim}
+    fst["sembrado"] = True
+    return out
 
 
 def _tiene_codigo(clave):

@@ -103,7 +103,8 @@ class Mundo:
         if "chat/completions" in url:
             self.ia_llamadas += 1
             self.modelos_pedidos = getattr(self, "modelos_pedidos", []) + [datos.get("model")]
-            if self.ia == "caida":
+            self.urls_ia = getattr(self, "urls_ia", []) + [url]
+            if self.ia == "caida" or (self.ia == "lxc_caida" and "ia.example" in url):
                 return red.Resp(0, error="URLError: timed out")
             if self.ia == "review_lenta" and datos.get("model") == "review":
                 return red.Resp(0, error="TimeoutError")
@@ -148,6 +149,8 @@ class Mundo:
                 return self._etag(url, cab, b"[]")
             return self._etag(url, cab, json.dumps(datos[repo]).encode())
         if "api.github.com/search/repositories" in url:
+            if "user%3A" in url:
+                return red.Resp(200, json.dumps(getattr(self, "search_autores", {"items": []})).encode())
             return red.Resp(200, json.dumps(self.search).encode())
         if "api.github.com/rate_limit" in url:
             return red.Resp(200, json.dumps({"resources": {"core": {"remaining": 990, "limit": 1000}}}).encode())
