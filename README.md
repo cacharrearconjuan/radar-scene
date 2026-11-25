@@ -10,7 +10,7 @@ Bot de Telegram que avisa de las novedades de la scene de PS5 **que ya están pu
 | Lista oficial de PS5 Payload Manager y otras listas (`[listas]`) | Payloads nuevos y sus releases; los repos se añaden solos |
 | Búsqueda en GitHub | Repos de PS5 recién creados («ps5», «PlayStation 5» o «Prospero») que superan 25, 50, 200 o 1.000 estrellas (y tienen código) |
 | Autores clave | Repos nuevos de los autores de [A] y [B] (Gezine, EchoStretch, itsPLK…), desde la primera estrella, si tienen código |
-| Web oficial de Sony | Firmwares nuevos de PS5 |
+| Web oficial de Sony | Firmwares nuevos de PS5 (apagado desde el 25-nov: `vigilar_sony`) |
 | Prensa (`[prensa]`) | Solo artículos de cosas ya publicadas y con enlace a la descarga |
 | YouTube (`[youtube]`) | Si la competencia ya lo ha sacado |
 
