@@ -5,6 +5,7 @@ Uso: python -m radar {ronda|prueba|diagnostico|resumen} [--estado ruta]
 import argparse
 import json
 import os
+from datetime import timedelta
 import sys
 import time
 import traceback
@@ -154,7 +155,7 @@ def recoger(e, cfg, conf, ctx):
             estado.salud(e, nombre.split(":")[0], False, type(ex).__name__)
 
     todo = ctx.get("todo")
-    if ronda % 3 == 1 or todo:
+    if conf.get("vigilar_sony", True) and (ronda % 3 == 1 or todo):
         tarea("sony", fuentes.sony, e, conf, ctx)
     if ronda % 6 == 1 or todo:
         tarea("listas", fuentes.listas, e, cfg, ctx)
@@ -475,6 +476,27 @@ def toca_resumen(e, conf, forzar=False):
     return bool(t) and t > turno_hecho(e, conf)
 
 
+def cabecera_turno(e, conf, ahora):
+    """Título del mensaje según la hora (mañana, tarde o noche) y desde cuándo cuenta lo nuevo."""
+    horas = horas_resumen(conf)
+    m = ahora.hour * 60 + ahora.minute
+    if len(horas) == 1 or m < _hm(horas[1]):
+        titulo = "Resumen de la scene"
+    elif ahora.hour < 20:
+        titulo = "Actualización de la tarde"
+    else:
+        titulo = "Actualización de la noche"
+    hecho = turno_hecho(e, conf)
+    desde_txt = ""
+    if len(hecho) >= 16:
+        ayer = (ahora - timedelta(days=1)).strftime("%Y-%m-%d")
+        if hecho[:10] == ahora.strftime("%Y-%m-%d"):
+            desde_txt = f"el aviso de las {hecho[11:16]}"
+        elif hecho[:10] == ayer and hecho[11:16] != "23:59":
+            desde_txt = f"el aviso de ayer a las {hecho[11:16]}"
+    return titulo, desde_txt
+
+
 def _marcar_resumen(e, conf, dia):
     """Un resumen enviado a las HH:MM cubre todos los turnos de hasta esa hora."""
     r = e["resumen"]
@@ -518,10 +540,17 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
     if not r.get("congelado"):
         crudos = sorted(e["pendientes"], key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))[:60]
         items = agrupar(crudos)[:40]
+        titulo, desde_txt = cabecera_turno(e, conf, ahora)
         if not items:
-            _marcar_resumen(e, conf, dia)
+            if not conf.get("resumen_aunque_vacio"):
+                _marcar_resumen(e, conf, dia)
+                estado.guardar(e, ruta)
+                return
+            # Mensaje fijo: también cuando no ha salido nada, para saber que el radar sigue vivo
+            r["congelado"] = {"dia": dia, "id": ahora.strftime("%Y-%m-%dT%H%M"), "enviados": 0, "url": "",
+                              "trozos": [formato.vacio(titulo, conf["zona"], desde_txt)]}
             estado.guardar(e, ruta)
-            return
+    if not r.get("congelado"):
         try:                               # competencia al día justo antes de enviar
             competencia.refrescar(cfg, e)
             for x in items:
@@ -532,11 +561,7 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
         claves = {x.get("clave") for x in crudos}
         e["pendientes"] = [x for x in e["pendientes"] if x.get("clave") not in claves]
         r["anterior"] = {"dia": dia, "items": crudos}        # para «repetir_resumen»
-        # El de la mañana es el resumen; los de después, la actualización de lo nuevo desde el anterior
-        tarde = _hm(ahora.strftime("%H:%M")) >= _hm(horas_resumen(conf)[-1]) and len(horas_resumen(conf)) > 1
-        desde = turno_hecho(e, conf)
-        desde = desde[-5:] if tarde and desde[:10] == dia else ""
-        trozos = formato.trocear(formato.resumen(items, conf["zona"], tarde=tarde, desde=desde))
+        trozos = formato.trocear(formato.resumen(items, conf["zona"], titulo=titulo, desde_txt=desde_txt))
         r["congelado"] = {"dia": dia, "id": ahora.strftime("%Y-%m-%dT%H%M"), "trozos": trozos, "enviados": 0,
                           "url": items[0].get("url") or "https://github.com"}
         estado.guardar(e, ruta)
@@ -544,7 +569,7 @@ def enviar_resumen(e, cfg, conf, ruta, forzar=False):
     for i, trozo in enumerate(c["trozos"]):
         if i < c["enviados"]:
             continue                    # ya salió en una ronda anterior
-        boton = telegram.boton(c["url"], f"🗞️ Resumen {i + 1}/{len(c['trozos'])} · {c['dia']}")
+        boton = telegram.boton(c["url"], f"🗞️ Resumen {i + 1}/{len(c['trozos'])} · {c['dia']}") if c.get("url") else None
         mid = telegram.enviar(e, trozo, boton, guardar=guardar_fn(e, ruta),
                               clave=f"resumen:{c.get('id') or c['dia']}:{i}")
         if mid is None and telegram._token():
@@ -752,7 +777,7 @@ def modo_diagnostico(e, cfg, conf, ruta):
         r = red.pedir(url)
         p("Lista " + url.split("/")[2], r.ok, f"HTTP {r.status}")
     from .firmware import sony as fws, fmt
-    for url in conf["sony"]:
+    for url in (conf["sony"] if conf.get("vigilar_sony", True) else []):
         r = red.pedir(url, timeout=20)
         vs = fws(r.texto) if r.ok else []
         p("Sony " + url.split("/")[3], bool(vs), f"última {fmt(max(vs))}" if vs else f"HTTP {r.status}")

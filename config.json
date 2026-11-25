@@ -2,8 +2,10 @@
   "zona": "Europe/Madrid",
   "horas_resumen": [
     "09:00",
-    "18:00"
+    "15:00",
+    "21:00"
   ],
+  "resumen_aunque_vacio": true,
   "silencio": [
     "00:30",
     "08:00"
@@ -58,6 +60,14 @@
         "omitir_si": "groq-directo"
       },
       {
+        "nombre": "openrouter",
+        "url": "https://openrouter.ai/api/v1",
+        "key_env": "OPENROUTER_API_KEY",
+        "modelo": "openrouter/free",
+        "timeout": 90,
+        "max_tokens": 4000
+      },
+      {
         "nombre": "auto",
         "url_env": "SUPER_IA_URL",
         "key_env": "SUPER_IA_KEY",
@@ -68,6 +78,7 @@
       }
     ]
   },
+  "vigilar_sony": false,
   "sony": [
     "https://www.playstation.com/es-es/support/hardware/ps5/system-software-info/",
     "https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/",

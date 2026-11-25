@@ -19,7 +19,7 @@ Nunca avisa de descargas de juegos ni de volcados.
 ## Niveles
 
 - 🔥 **Urgente (9-10):** llega al momento, también de madrugada. Por ejemplo, un exploit para un firmware más alto de lo conocido, una versión nueva de un repo clave o un firmware nuevo de Sony.
-- ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen** de las 09:00 y a la **actualización** de las 18:00 (hora de Madrid), con lo nuevo desde el anterior. Los ⭐ salen con detalle: idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos.
+- ⭐ **Interesante (6-8)** y 📋 **Menor (3-5):** van al **resumen** de las 09:00 y a las **actualizaciones** de las 15:00 y las 21:00 (hora de Madrid), con lo nuevo desde el anterior. Si no ha salido nada, llega igual un «Sin novedades» (`resumen_aunque_vacio`). Los ⭐ salen con detalle: idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos.
 - Por debajo de 3 (solo traducciones, builds automáticas…), nada.
 
 Si la IA (`SUPER_IA_URL`: primero `groq`, rápido; si no contesta o se queda sin cupo, `auto`) responde, cada aviso lleva:
@@ -45,6 +45,7 @@ Si la IA no responde, el aviso sale igual, marcado «(sin IA)».
 | `TELEGRAM_CHAT_ID` | el chat_id del grupo (con el `-`) |
 | `SUPER_IA_URL` | la Base URL de la pasarela de IA, terminada en `/v1` (opcional) |
 | `SUPER_IA_KEY` | la clave de la pasarela pensada para GitHub (opcional) |
+| `OPENROUTER_API_KEY` | clave de OpenRouter (openrouter.ai, gratis: 50 peticiones/día con modelos `:free`): respaldo si fallan Groq y la pasarela (opcional) |
 | `GROQ_API_KEY` | clave de Groq (console.groq.com, gratis): la IA va directa a Groq sin depender de la pasarela (opcional) |
 
 ### 3. Primera prueba
@@ -69,11 +70,12 @@ El `schedule` de GitHub va como respaldo cada 15 minutos, pero no es fiable. Lo 
 
 - **`fuentes.txt`**: añadir o quitar repos, listas, canales de YouTube o prensa (una línea cada uno).
 - **`config.json`**:
-  - `horas_resumen` (09:00 y 18:00: el resumen de la mañana y la actualización de la tarde, con lo nuevo desde el anterior) y `silencio`: horarios.
+  - `horas_resumen` (09:00, 15:00 y 21:00), `resumen_aunque_vacio` y `silencio`: horarios.
+  - `vigilar_sony`: mirar la página de firmwares de Sony (apagado desde el 25-nov).
   - `fuego_rompe_silencio`: si los 🔥 llegan de madrugada.
   - `umbral_fuego`: nota mínima para avisar al momento.
   - `umbrales_estrellas`: estrellas que tiene que alcanzar un repo nuevo.
-  - `ia.proveedores`: lista ordenada de IAs OpenAI-compatibles; se prueba una tras otra hasta que una responde. Cada una con `nombre`, `url` (o `url_env`), `key_env` (secreto con la clave), `modelo`, `timeout`, `max_tokens`, `parametros`, `separacion` (segundos entre llamadas que comparten `cupo`), `pasarela` (va por super-ia) y `omitir_si` (no usarla si otra está configurada). Las que no tienen su secreto se saltan. Por defecto: Groq directo → `groq` de super-ia (solo si no hay Groq directo) → `auto` de super-ia.
+  - `ia.proveedores`: lista ordenada de IAs OpenAI-compatibles; se prueba una tras otra hasta que una responde. Cada una con `nombre`, `url` (o `url_env`), `key_env` (secreto con la clave), `modelo`, `timeout`, `max_tokens`, `parametros`, `separacion` (segundos entre llamadas que comparten `cupo`), `pasarela` (va por super-ia) y `omitir_si` (no usarla si otra está configurada). Las que no tienen su secreto se saltan. Por defecto: Groq directo → `groq` de super-ia (solo si no hay Groq directo) → OpenRouter (`openrouter/free`) → `auto` de super-ia.
   - `ia.nota_minima` (3) y `ia.max_llamadas` (4): desde qué nota pasa una novedad por la IA y cuántas como mucho por ronda (primero las de más nota).
   - `ia.segundos_ronda` (420): tiempo máximo de IA por ronda, esperas incluidas (el paso tiene 11 min). `ia.pista_caida`: texto opcional del aviso cuando la pasarela no responde.
 - **Estado:** el bot guarda lo que ya ha visto en la rama `estado` (`estado.json`). Para empezar de cero, borra esa rama.

@@ -38,6 +38,10 @@ class Base(unittest.TestCase):
         # Antes de las 9: así el resumen no salta salvo que la prueba lo pida
         self.hora = mock.patch.object(radar, "toca_resumen", lambda e, c, forzar=False: forzar)
         self.hora.start()
+        # Las pruebas cubren también la página de Sony (en la config real está apagada)
+        _orig = radar.cargar_conf
+        self.conf_p = mock.patch.object(radar, "cargar_conf", lambda: {**_orig(), "vigilar_sony": True})
+        self.conf_p.start()
         # Mundo inicial (lo que ya existía antes de arrancar el bot)
         self.m.releases = {
             "etaHEN/etaHEN": [rel(1, "2.5b", "bug fixes", 24 * 40)],
@@ -55,6 +59,7 @@ class Base(unittest.TestCase):
         self.env.stop()
         self.sleep.stop()
         self.hora.stop()
+        self.conf_p.stop()
 
     def ronda(self):
         radar.main(["ronda", "--estado", self.ruta])
@@ -306,6 +311,13 @@ class TestRondas(Base):
         e = self.ronda()                                          # no se repite
         self.assertEqual(len([x for x in e["pendientes"] if x.get("tipo") == "repo_nuevo"]), 1)
         self.assertTrue(any("user%3AGezine" in u for u in self.m.peticiones))
+
+    def test_resumen_vacio_tambien_llega(self):
+        self.ronda()
+        radar.main(["resumen", "--estado", self.ruta])
+        self.assertIn("Sin novedades", self.m.tg.del_bot[-1]["texto"])
+        e = estado.cargar(self.ruta)
+        self.assertNotIn("congelado", e["resumen"])
 
     def test_endpoints(self):
         from radar import ia
@@ -706,7 +718,7 @@ class TestAjustesIA(Base):
 
 class TestTurnosResumen(unittest.TestCase):
     def setUp(self):
-        self.conf = radar.cargar_conf()
+        self.conf = {**radar.cargar_conf(), "horas_resumen": ["09:00", "18:00"]}
 
     def _a_las(self, hh, mm, dia=23):
         from zoneinfo import ZoneInfo
@@ -729,6 +741,28 @@ class TestTurnosResumen(unittest.TestCase):
             radar._marcar_resumen(e, self.conf, "2026-11-23")
         with self._a_las(23, 0):
             self.assertFalse(radar.toca_resumen(e, self.conf))
+
+    def test_tres_turnos_y_mensaje_fijo(self):
+        conf = radar.cargar_conf()                      # 09:00, 15:00 y 21:00
+        e = {"resumen": {"ultimo_dia": "2026-11-23", "ultimo_turno": "2026-11-23 09:01"}}
+        with self._a_las(14, 59):
+            self.assertFalse(radar.toca_resumen(e, conf))
+        with self._a_las(15, 0):
+            self.assertTrue(radar.toca_resumen(e, conf))
+            self.assertEqual(radar.cabecera_turno(e, conf, radar.ahora_local(conf)),
+                             ("Actualización de la tarde", "el aviso de las 09:01"))
+            radar._marcar_resumen(e, conf, "2026-11-23")
+        with self._a_las(21, 2):
+            self.assertTrue(radar.toca_resumen(e, conf))
+            self.assertEqual(radar.cabecera_turno(e, conf, radar.ahora_local(conf))[0], "Actualización de la noche")
+            radar._marcar_resumen(e, conf, "2026-11-23")
+        with self._a_las(9, 1, dia=24):
+            t, d = radar.cabecera_turno(e, conf, radar.ahora_local(conf))
+            self.assertEqual(t, "Resumen de la scene")
+            self.assertEqual(d, "el aviso de ayer a las 21:02")
+        from radar import formato
+        v = formato.vacio("Actualización de la tarde", "Europe/Madrid", "el aviso de las 09:01")
+        self.assertIn("Sin novedades desde el aviso de las 09:01", v)
 
     def test_estado_antiguo_solo_con_ultimo_dia(self):
         e = {"resumen": {"ultimo_dia": "2026-11-23"}}     # ya salió el de las 9 con la versión anterior

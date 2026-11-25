@@ -32,6 +32,7 @@ jobs:
       SUPER_IA_URL: ${{ secrets.SUPER_IA_URL }}
       SUPER_IA_KEY: ${{ secrets.SUPER_IA_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

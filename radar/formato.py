@@ -95,11 +95,21 @@ def _fw_texto(x):
     return x.get("fw_ia") or ""
 
 
-def resumen(items, zona, extra=0, repetido=False, tarde=False, desde=""):
+def vacio(titulo, zona, desde_txt=""):
+    """Mensaje fijo cuando no ha salido nada: así se sabe que el radar sigue vivo."""
     hoy = datetime.now(ZoneInfo(zona)).strftime("%d/%m")
-    cab = "Actualización de la tarde" if tarde else "Resumen de la scene"
-    lin = [f"🗞️ <b>{cab} · {hoy}</b>" + (" <i>(repetido, con la IA ajustada)</i>" if repetido else "")]
-    if tarde and desde:
+    lin = [f"🗞️ <b>{escape(titulo)} · {hoy}</b>",
+           "😴 Sin novedades" + (f" desde {escape(desde_txt)}" if desde_txt else "") + ". El radar sigue vigilando."]
+    return "\n".join(lin)
+
+
+def resumen(items, zona, extra=0, repetido=False, tarde=False, desde="", titulo=None, desde_txt=""):
+    hoy = datetime.now(ZoneInfo(zona)).strftime("%d/%m")
+    cab = titulo or ("Actualización de la tarde" if tarde else "Resumen de la scene")
+    lin = [f"🗞️ <b>{escape(cab)} · {hoy}</b>" + (" <i>(repetido, con la IA ajustada)</i>" if repetido else "")]
+    if desde_txt:
+        lin.append(f"<i>Lo nuevo desde {escape(desde_txt)}</i>")
+    elif tarde and desde:
         lin.append(f"<i>Lo nuevo desde el resumen de las {escape(desde)}</i>")
     for niv, titulo in (("interesante", "⭐ Interesante"), ("menor", "📋 Menor")):
         grupo = [x for x in items if x.get("nivel") == niv]
