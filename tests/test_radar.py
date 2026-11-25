@@ -695,3 +695,21 @@ class TestTurnosResumen(unittest.TestCase):
         for trozo in ("Actualización de la tarde", "desde el resumen de las 09:02", "🎬", "Qué es", "Para qué sirve",
                       "Firmware: 3.00-4.51", "Competencia: nadie aún", "1. Carga el payload", "Gancho"):
             self.assertIn(trozo, t)
+
+
+class TestAvisoIA(unittest.TestCase):
+    def test_avisa_una_vez_y_al_volver(self):
+        conf = radar.cargar_conf()
+        e = {"ia": {"fallos": 3, "ultimo_error": "groq: sin conexión con super-ia"}}
+        enviados = []
+        with mock.patch.object(radar.telegram, "enviar", lambda e, t, m=None, **k: enviados.append(t) or 1), \
+             mock.patch.object(radar, "en_silencio", lambda c: False), \
+             mock.patch.object(radar.estado, "guardar", lambda e, r: None):
+            radar.avisar_ia(e, conf, "x")
+            radar.avisar_ia(e, conf, "x")
+            self.assertEqual(len(enviados), 1)
+            self.assertIn("LXC 118", enviados[0])
+            e["ia"]["fallos"] = 0
+            radar.avisar_ia(e, conf, "x")
+            self.assertEqual(len(enviados), 2)
+            self.assertIn("vuelve a responder", enviados[1])

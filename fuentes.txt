@@ -51,6 +51,8 @@ https://cacharrearconjuan.github.io/mis-payloads-ps5/payloads.json
 quer3q/ps5-dump-forge
 EchoStretch/ps5-app-dumper
 cacharrearconjuan/PS5-AutoupdaterPM
+# Traductor de juegos: no es de la scene (25-nov)
+yunusdemirbag/nino-game-translator
 
 [youtube]
 # Competencia: @handle  nombre=Como sale en el aviso   (también vale channel_id=UC...)

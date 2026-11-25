@@ -11,6 +11,8 @@ import traceback
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from html import escape
+
 from . import competencia, estado, formato, fuentes, ia, red, reglas, telegram
 from .fuentes import norm
 
@@ -598,6 +600,25 @@ def modo_ronda(e, cfg, conf, ruta):
     estado.guardar(e, ruta)
     enviar_cola(e, conf, ruta)
     enviar_resumen(e, cfg, conf, ruta)
+    avisar_ia(e, conf, ruta)
+
+
+def avisar_ia(e, conf, ruta):
+    """Un aviso cuando la IA lleva varias rondas sin responder (y otro cuando vuelve)."""
+    ia_e = e.setdefault("ia", {})
+    f = ia_e.get("fallos", 0)
+    if f >= conf["ia"].get("avisar_tras_fallos", 3) and not ia_e.get("avisado") and not en_silencio(conf):
+        motivo = ia_e.get("ultimo_error") or "sin respuesta"
+        pista = (" Seguramente la LXC 118 (super-ia), su Docker o el Funnel de Tailscale están caídos."
+                 if "sin conexión" in motivo else "")
+        if telegram.enviar(e, f"⚠️ <b>La IA del radar no responde</b> ({escape(motivo)}).{pista}\n"
+                              "Los avisos siguen saliendo, pero «(sin IA)».", None, registrar=False):
+            ia_e["avisado"] = True
+            estado.guardar(e, ruta)
+    elif f == 0 and ia_e.get("avisado"):
+        if telegram.enviar(e, "✅ La IA del radar vuelve a responder.", None, registrar=False):
+            ia_e.pop("avisado", None)
+            estado.guardar(e, ruta)
     estado.guardar(e, ruta)
 
 

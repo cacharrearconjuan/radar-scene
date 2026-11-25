@@ -130,6 +130,10 @@ def resumen(items, zona, extra=0, repetido=False, tarde=False, desde=""):
                 lin.append("")                 # aire entre los ⭐, que ahora son más largos
     while lin and lin[-1] == "":
         lin.pop()
+    sin = [x for x in items if x.get("sin_ia")]
+    if sin and len(sin) == len(items):
+        motivo = next((x.get("ia_motivo") for x in sin if x.get("ia_motivo")), "")
+        lin += ["", "⚠️ <i>Todo ha salido sin IA" + (f": {escape(motivo)}" if motivo else "") + "</i>"]
     if extra:
         lin += ["", f"… y {extra} más."]
     return "\n".join(lin)
