@@ -73,6 +73,7 @@ El `schedule` de GitHub va como respaldo cada 15 minutos, pero no es fiable. Lo 
   - `umbrales_estrellas`: estrellas que tiene que alcanzar un repo nuevo.
   - `ia.modelo`: modelo principal de la pasarela (`groq`), con su `timeout`, `max_tokens` (bajo: Groq lo cuenta contra su tope de 8.000 tokens/min) y `separacion` (segundos mínimos entre dos llamadas suyas).
   - `ia.nota_minima` (3) y `ia.max_llamadas` (4): desde qué nota pasa una novedad por la IA y cuántas como mucho por ronda (primero las de más nota).
+  - `ia.segundos_ronda` (420): tiempo máximo de IA por ronda, esperas incluidas (el paso tiene 11 min). `ia.pista_caida`: texto opcional del aviso cuando la pasarela no responde.
   - `ia.respaldo`: el modelo que se prueba si el principal falla (`auto`, con `timeout_respaldo`).
 - **Estado:** el bot guarda lo que ya ha visto en la rama `estado` (`estado.json`). Para empezar de cero, borra esa rama.
 

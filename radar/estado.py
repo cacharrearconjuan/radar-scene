@@ -19,8 +19,8 @@ BASE = {
     "yt": {"canales": {}, "videos": []},
     "feeds": {},                    # wololo, sony...
     "ia": {"fallos": 0},
-    "salud": {},
-    "renombres": {},                # enlace viejo -> nombre actual del repo                    # fuente -> {"ok": ts, "fallo": ts, "error": str}
+    "salud": {},                    # fuente -> {"ok": ts, "fallo": ts, "error": str}
+    "renombres": {},                # enlace viejo -> nombre actual del repo
 }
 
 

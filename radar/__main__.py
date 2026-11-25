@@ -609,7 +609,7 @@ def avisar_ia(e, conf, ruta):
     f = ia_e.get("fallos", 0)
     if f >= conf["ia"].get("avisar_tras_fallos", 3) and not ia_e.get("avisado") and not en_silencio(conf):
         motivo = ia_e.get("ultimo_error") or "sin respuesta"
-        pista = (" Seguramente la LXC 118 (super-ia), su Docker o el Funnel de Tailscale están caídos."
+        pista = (" " + conf["ia"].get("pista_caida", "Revisa la pasarela de IA: la máquina, Docker o el túnel.")
                  if "sin conexión" in motivo else "")
         if telegram.enviar(e, f"⚠️ <b>La IA del radar no responde</b> ({escape(motivo)}).{pista}\n"
                               "Los avisos siguen saliendo, pero «(sin IA)».", None, registrar=False):
@@ -647,7 +647,7 @@ def modo_repetir_resumen(e, cfg, conf, ruta):
     ant = e["resumen"].get("anterior") or {}
     base = ant.get("items") or _reconstruir(e, cfg, conf)
     eq = Equivalencias(e, cfg)
-    ctx = {"techo": e["fw"].get("sony_max", 1422) + 100}
+    ctx = {"techo": e["fw"].get("sony_max", 1422) + 100, "ia_limite": 560}
     items = []
     e["ia"]["fallos"] = 0                    # prueba manual: sin cortacircuitos
     for x in base[:15]:

@@ -262,6 +262,25 @@ class TestRondas(Base):
         self.assertEqual(sum("etaHEN" in m["texto"] for m in self.m.tg.del_bot), 1)
         self.assertEqual(e["cola"], [])
 
+    def test_502_y_pasarela_caida_no_prueba_el_respaldo(self):
+        self.ronda()
+        self.m.ia = "502"
+        self.m.releases["etaHEN/etaHEN"].append(rel(11, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        self.ronda()
+        self.assertEqual(self.m.modelos_pedidos[-1:], ["groq"], "no se pierde tiempo con auto")
+        self.assertIn("sin conexión con super-ia", self.m.tg.del_bot[-1]["texto"])
+
+    def test_cortacircuitos_se_recupera_con_un_sondeo(self):
+        e = self.ronda()
+        e["ia"]["fallos"] = 5
+        e["ronda"] = 6 * 100                          # la siguiente (601) es de las que antes no intentaban
+        estado.guardar(e, self.ruta)
+        self.m.ia = "ok"                              # la LXC ha vuelto
+        self.m.releases["etaHEN/etaHEN"].append(rel(11, "3.0", "- Added support for firmware 13.60 HEN", 1))
+        e = self.ronda()
+        self.assertEqual(self.m.sondeos, 1)
+        self.assertEqual(e["ia"]["fallos"], 0, "la IA vuelve en la misma ronda")
+
     def test_groq_sin_cupo_pasa_a_auto(self):
         self.ronda()
         self.m.ia = "groq_429"
@@ -290,7 +309,7 @@ class TestRondas(Base):
         self.assertIn("1. Abre Payload Manager", t)
         self.assertIn("2. Carga etaHEN.bin", t)
         self.assertNotIn("https://x.y", t, "sin enlaces de la IA")
-        self.assertIn("README del proyecto", self.m.ultimo_prompt)
+        self.assertIn("<readme>", self.m.ultimo_prompt)
         # La IA no puede tumbar una release real, pero sí un artículo
         self.m.ia = "dice_no"
         self.m.wololo = leer("wololo_feed.xml").replace(
@@ -708,7 +727,7 @@ class TestAvisoIA(unittest.TestCase):
             radar.avisar_ia(e, conf, "x")
             radar.avisar_ia(e, conf, "x")
             self.assertEqual(len(enviados), 1)
-            self.assertIn("LXC 118", enviados[0])
+            self.assertIn("Revisa la pasarela", enviados[0])
             e["ia"]["fallos"] = 0
             radar.avisar_ia(e, conf, "x")
             self.assertEqual(len(enviados), 2)

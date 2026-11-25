@@ -95,6 +95,11 @@ class Mundo:
         if "api.telegram.org" in url:
             metodo = url.rsplit("/", 1)[1]
             return self.tg.manejar(metodo, datos)
+        if url.endswith("/v1/models") and "ia.example" in url:
+            self.sondeos = getattr(self, "sondeos", 0) + 1
+            if self.ia in ("caida", "502"):
+                return red.Resp(0, error="URLError: timed out") if self.ia == "caida" else red.Resp(502)
+            return red.Resp(200, b'{"data": []}')
         if "chat/completions" in url:
             self.ia_llamadas += 1
             self.modelos_pedidos = getattr(self, "modelos_pedidos", []) + [datos.get("model")]
@@ -102,6 +107,8 @@ class Mundo:
                 return red.Resp(0, error="URLError: timed out")
             if self.ia == "review_lenta" and datos.get("model") == "review":
                 return red.Resp(0, error="TimeoutError")
+            if self.ia == "502":
+                return red.Resp(502)
             self.ia_datos = getattr(self, "ia_datos", []) + [datos]
             if self.ia == "groq_429" and datos.get("model") == "groq":
                 return red.Resp(429)

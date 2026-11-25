@@ -1,4 +1,5 @@
 """Textos de los avisos (HTML de Telegram)."""
+import re as _re
 from html import escape
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -17,7 +18,6 @@ ANGULO = {
 }
 
 
-import re as _re
 
 
 def titulo_bonito(n):

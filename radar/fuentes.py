@@ -216,7 +216,8 @@ def commits(e, clave, info, ctx):
         if not r.ok and r.status != 304:
             if r.status in (403, 429) and clave.startswith("github.com:"):
                 ctx["limite_github"] = True
-            salud(e, "github", False, f"{clave} commits {r.status}")
+            salud(e, "github" if clave.startswith("github.com:") else clave.split(":")[0], False,
+                  f"{clave} commits {r.status}")
         return []
     try:
         lista = r.json()
@@ -487,12 +488,13 @@ def prensa(e, cfg, ctx):
         if not r.ok:
             salud(e, "prensa", False, f"{url} {r.status} {r.error}")
             continue
-        salud(e, "prensa", True)
-        st["etag"] = r.etag
         try:
             raiz = ET.fromstring(r.cuerpo)
         except ET.ParseError:
-            continue
+            salud(e, "prensa", False, f"{url} no es un feed válido")
+            continue                 # sin guardar el ETag: la próxima vez se vuelve a leer
+        salud(e, "prensa", True)
+        st["etag"] = r.etag
         ns = {"content": "http://purl.org/rss/1.0/modules/content/"}
         sembrado = st.get("sembrado")
         for it in raiz.iter("item"):
