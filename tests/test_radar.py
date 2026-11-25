@@ -215,7 +215,7 @@ class TestRondas(Base):
 
         # Resumen diario
         radar.main(["resumen", "--estado", self.ruta])
-        self.assertIn("Resumen de la scene", self.m.tg.del_bot[-1]["texto"])
+        self.assertRegex(self.m.tg.del_bot[-1]["texto"], r"🗞️ <b>.* · \d\d/\d\d</b>")   # el título cambia con la hora
         self.assertIn("PS5X360", self.m.tg.del_bot[-1]["texto"])
         e = estado.cargar(self.ruta)
         self.assertEqual(e["pendientes"], [])
@@ -800,3 +800,23 @@ class TestAvisoIA(unittest.TestCase):
             radar.avisar_ia(e, conf, "x")
             self.assertEqual(len(enviados), 2)
             self.assertIn("vuelve a responder", enviados[1])
+
+
+class TestNovedades(Base):
+    def test_novedades_en_aviso_y_resumen(self):
+        self.ronda()
+        self.m.releases["etaHEN/etaHEN"].append(rel(10, "3.0", "## What's Changed\n* Added support for firmware 13.60 HEN by @a in https://github.com/a/b/pull/1\n* New FTP server\n**Full Changelog**: https://github.com/x", 1))
+        self.ronda()
+        t = self.m.tg.del_bot[-1]["texto"]
+        self.assertIn("🆕", t)
+        self.assertIn("New FTP server", t)
+        self.assertNotIn("Full Changelog", t)
+
+    def test_notas_vacias_tira_de_commits(self):
+        from radar import fuentes
+        self.ronda()
+        self.m.releases["BrinooTk/PS5X360"].append(rel(13, "v1.0.3", "", 1, repo="BrinooTk/PS5X360"))
+        with mock.patch.object(fuentes, "cambios_entre", lambda c, a, t, maximo=15: ["Add controller remapping", "Fix audio desync"]):
+            e = self.ronda()
+        p = [x for x in e["pendientes"] if "PS5X360" in x.get("titulo", "")]
+        self.assertTrue(p and "Add controller remapping" in p[0].get("novedades", []))

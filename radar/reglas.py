@@ -263,3 +263,30 @@ def es_de_juegos(n):
     if n["tipo"] in ("articulo", "repo_nuevo"):
         base += " " + str(n.get("texto", ""))
     return bool(RE_JUEGOS.search(base))
+
+
+RE_LINEA_RUIDO = re.compile(r"(?i)^(full changelog|\*\*full changelog|what's changed|new contributors|"
+                            r"#+\s|<!--|!\[|https?://|@\w+ made their first|merge (pull|branch))")
+
+
+def novedades_de_texto(texto, maximo=4):
+    """Plan B sin IA: las primeras viñetas útiles de las notas de la versión (o de los commits)."""
+    out = []
+    for l in str(texto or "").splitlines():
+        l = l.strip()
+        if not l or RE_LINEA_RUIDO.match(l):
+            continue
+        l = re.sub(r"^[-*•+]\s+|^\d+[.)]\s+", "", l)
+        l = re.sub(r"\s+by @[\w-]+ in https?://\S+$", "", l)          # «… by @x in https://…/pull/12»
+        l = re.sub(r"\(?https?://\S+\)?", "", l).strip(" -:")
+        l = re.sub(r"[*_`]{1,3}", "", l)
+        if len(l) < 6 or RE_COMMIT_TRIVIAL.match(l):
+            continue
+        out.append(l[:137] + "…" if len(l) > 140 else l)
+        if len(out) >= maximo:
+            break
+    return out
+
+
+RE_COMMIT_TRIVIAL = re.compile(r"(?i)^(merge|bump|update readme|readme|typo|format|lint|ci\b|chore|docs?\b|"
+                               r"version bump|release v?\d|v?\d+(\.\d+)+$)")
