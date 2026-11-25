@@ -35,12 +35,18 @@ class Red:
             if self.ia == "caida":
                 return red.Resp(0, error="URLError: x")
             contenido = datos["messages"][1]["content"]
-            assert "<repos>" in contenido and datos["messages"][0]["content"].startswith("Eres el guionista de un canal de YouTube en castellano de España para técnicos")
+            if "<readme" in contenido:
+                self.pasos_pedidos = True
+                out = {"repos": [{"repo": "someone/winutil-pro", "requisitos": "Windows 10/11 y PowerShell",
+                                  "pasos": ["1. Abre PowerShell como administrador", "Pega el comando del README",
+                                            "Elige los ajustes y aplica"]}]}
+                return red.Resp(200, json.dumps({"choices": [{"message": {"content": json.dumps(out)}}]}).encode())
+            assert "<repos>" in contenido and "técnico microinformático" in datos["messages"][0]["content"]
             out = {"repos": [
-                {"repo": "someone/winutil-pro", "util": True, "categoria": "herramientas", "nota": 9,
+                {"repo": "someone/winutil-pro", "util": True, "categoria": "windows", "nota": 9,
                  "para_que": "Limpia y optimiza Windows en un clic.", "idea_video": "Deja Windows como nuevo en 5 minutos",
                  "dificultad": "fácil", "ofensivo": False},
-                {"repo": "lab/selfhost-panel", "util": True, "categoria": "selfhosted", "nota": 8,
+                {"repo": "lab/selfhost-panel", "util": True, "categoria": "descargas", "nota": 8,
                  "para_que": "Panel para tu homelab.", "idea_video": "El panel que le faltaba a mi homelab",
                  "dificultad": "media", "ofensivo": False},
                 {"repo": "net/wg-easy-ui", "util": True, "categoria": "redes", "nota": 7,
@@ -50,6 +56,8 @@ class Red:
                  "para_que": "x", "idea_video": "x", "dificultad": "media", "ofensivo": False}]}
             return red.Resp(200, json.dumps({"choices": [{"finish_reason": "stop", "message": {
                 "content": json.dumps(out, ensure_ascii=False)}}]}).encode())
+        if url.endswith("/repos/someone/winutil-pro/readme"):
+            return red.Resp(200, b"# WinUtil\nRun irm christitus.com/win | iex in an admin PowerShell")
         if "api.telegram.org" in url and url.endswith("sendMessage"):
             self.tg.append(datos["text"])
             return red.Resp(200, json.dumps({"ok": True, "result": {"message_id": 500 + len(self.tg)}}).encode())
@@ -89,12 +97,15 @@ class TestInformatica(unittest.TestCase):
         self.assertIn("Repos de informática", t)
         self.assertIn("someone/winutil-pro", t)
         self.assertIn("+1,2k hoy", t)
-        self.assertIn("🖥️ Self-hosted", t)
-        self.assertIn("🌐 Redes y seguridad", t)
+        self.assertIn("⬇️ Descargas", t)
+        self.assertIn("Pasos", t)
+        self.assertIn("Abre PowerShell como administrador", t)
+        self.assertIn("Requisitos: Windows 10/11", t)
+        self.assertIn("🌐 Redes, privacidad y seguridad", t)
         self.assertNotIn("moon-bot", t)          # cripto fuera
         self.assertNotIn("stealer", t)           # ofensivo fuera
         self.assertNotIn("some-npm-lib", t)      # la IA dice que no es útil
-        self.assertEqual(rd.ia_llamadas, 1, "una sola llamada a la IA al día")
+        self.assertEqual(rd.ia_llamadas, 2, "una llamada para elegir y otra para los pasos")
         with open(self.ruta) as f:
             e = json.load(f)
         self.assertIn("someone/winutil-pro", e["enviados_repos"])
@@ -181,11 +192,11 @@ class TestGemini(TestInformatica):
         def falso(url, cab, datos):
             if "chat/completions" in url:
                 out = {"repos": [
-                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "selfhosted", "nota": 8,
+                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "descargas", "nota": 8,
                      "para_que": "a", "idea_video": "b", "dificultad": "media", "ofensivo": False},
-                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "selfhosted", "nota": 8,
+                    {"repo": "lab/selfhost-panel", "util": True, "categoria": "descargas", "nota": 8,
                      "para_que": "a", "idea_video": "b", "dificultad": "media", "ofensivo": False},
-                    {"repo": "someone/winutil-pro", "util": True, "categoria": "herramientas", "nota": 7,
+                    {"repo": "someone/winutil-pro", "util": True, "categoria": "windows", "nota": 7,
                      "para_que": "x", "idea_video": "y", "dificultad": "fácil", "ofensivo": True}]}
                 return red.Resp(200, json.dumps({"choices": [{"message": {"content": json.dumps(out)}}]}).encode())
             return rd(url, cab, datos)
