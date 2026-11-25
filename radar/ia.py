@@ -112,14 +112,15 @@ class FalloIA(Exception):
     pass
 
 
-def _pedir_modelo(p, contenido):
+def _pedir_modelo(p, contenido, sistema=None, max_tokens=None):
     """Una llamada. Devuelve el dict de la IA o lanza FalloIA con un motivo legible y sin datos privados."""
     # Modelos que «piensan» (MiniMax, DeepSeek…): el razonamiento cuenta dentro de max_tokens,
     # así que hace falta mucho margen o la respuesta llega vacía. Groq, en cambio, cuenta
     # max_tokens contra su tope de tokens por minuto, así que con él va más bajo (config).
     timeout = p.get("timeout", 100)
-    datos = {"model": p["modelo"], "temperature": 0.2, "max_tokens": p.get("max_tokens", 8000),
-             "messages": [{"role": "system", "content": SISTEMA},
+    datos = {"model": p["modelo"], "temperature": 0.2,
+             "max_tokens": max(p.get("max_tokens", 8000), max_tokens or 0),
+             "messages": [{"role": "system", "content": sistema or SISTEMA},
                           {"role": "user", "content": contenido}]}
     datos.update(p.get("parametros") or {})
     t0 = time.time()
@@ -186,7 +187,7 @@ def enriquecer(n, e, conf, ctx, readme=""):
             n["ia_motivo"] = "sin tiempo en esta ronda"
             return None
         # Etiquetas: separan bien el material de terceros (y el modelo no lo toma por instrucciones)
-        contenido = (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
+        contenido = ctx.get("ia_contenido") or (f"Repo/fuente: {n.get('repo')}\nTipo: {n.get('tipo')}\nTítulo: {n.get('titulo')}\n"
                      f"Versión: {n.get('tag')}\n<notas>\n{str(n.get('texto') or '')[:3000]}\n</notas>\n\n"
                      f"<readme>\n{str(readme or '(no disponible)')[:4000]}\n</readme>")
         motivos, out = [], None
@@ -212,7 +213,8 @@ def enriquecer(n, e, conf, ctx, readme=""):
             t0 = time.time()
             ctx["ia_ultima_llamada"][cupo] = t0
             try:
-                out = _pedir_modelo(p, contenido)
+                out = _pedir_modelo(p, contenido, ctx.get("ia_sistema"), ctx.get("ia_max_tokens"))
+                ctx["ia_bruto"] = out        # para quien use otro formato de respuesta (informática)
                 break
             except FalloIA as ex:
                 motivos.append(f"{nombre}: {ex}")
