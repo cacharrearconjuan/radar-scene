@@ -21,7 +21,8 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMPOS_GUARDADOS = ("clave", "tipo", "repo", "repo_cfg", "titulo", "tag", "url", "ts", "nota", "nivel",
                     "estado_txt", "fw", "fw_ia", "resumen", "angulo", "competencia", "razones",
                     "sin_ia", "confirmado_por", "sin_verificar", "fw_nuevo", "fw_previo", "alias",
-                    "para_que", "idea_titulo", "pasos", "ia_motivo", "frase", "versiones")
+                    "para_que", "idea_titulo", "pasos", "ia_motivo", "frase", "versiones",
+                    "novedades", "tag_anterior")
 
 
 def cargar_conf():
@@ -317,6 +318,7 @@ def evaluar(novedades, e, cfg, conf, ctx):
             # aparta lo que no es de la scene. Los de nota alta van primero (por_repo ya viene ordenado).
             if n["nota"] >= conf["ia"].get("nota_minima", 6) and llamadas_ia < conf["ia"].get("max_llamadas", 3):
                 llamadas_ia += 1
+                _completar_cambios(n, ctx)
                 res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
                 if not ia.combinar(n, res, conf["umbral_fuego"]):
                     print(f"[ia] descartado por la IA (no disponible o de juegos): {n.get('titulo')}")
@@ -326,12 +328,36 @@ def evaluar(novedades, e, cfg, conf, ctx):
                     continue
             else:
                 n["sin_ia"] = True
+                _completar_cambios(n, ctx)
+            _novedades_sin_ia(n)
             _actualizar_fw(n, e, cfg, conf)
             (ya if n["nivel"] == "fuego" else resumen).append(n)
         except Exception as ex:
             print(f"[evaluar] {type(ex).__name__}: {ex} en {n.get('titulo')!r}")
             traceback.print_exc()
     return ya, resumen
+
+
+def _completar_cambios(n, ctx):
+    """Si las notas de la versión no dicen nada, se añaden los commits desde la versión anterior."""
+    if n.get("tipo") != "release" or ctx.get("limite_github"):
+        return
+    util = [l for l in str(n.get("texto") or "").splitlines()
+            if l.strip() and not reglas.RE_LINEA_RUIDO.match(l.strip())]
+    if len(" ".join(util)) >= 80:
+        return
+    try:
+        commits = fuentes.cambios_entre(n.get("repo_cfg") or n.get("repo"), n.get("tag_anterior"), n.get("tag"))
+    except Exception:
+        commits = []
+    if commits:
+        n["texto"] = (str(n.get("texto") or "") + "\n\nCommits desde la versión anterior:\n"
+                      + "\n".join("- " + c for c in commits))
+
+
+def _novedades_sin_ia(n):
+    if n.get("tipo") == "release" and not n.get("novedades"):
+        n["novedades"] = reglas.novedades_de_texto(n.get("texto"))
 
 
 def _readme(n, ctx):
@@ -524,6 +550,16 @@ def agrupar(items):
             for campo in ("frase", "para_que", "resumen", "idea_titulo"):
                 if not principal.get(campo):
                     principal[campo] = next((x[campo] for x in reversed(g) if x.get(campo)), None)
+            # Novedades de todas las versiones juntas, de la más nueva a la más antigua
+            juntas = []
+            for x in reversed(g):
+                for nv in x.get("novedades") or []:
+                    if nv not in juntas:
+                        juntas.append(nv)
+            principal["novedades"] = juntas[:6]
+            primera = g[0]
+            if primera.get("tag_anterior"):
+                principal["tag_anterior"] = primera["tag_anterior"]
         out.append(principal)
     return sorted(out, key=lambda x: (-x.get("nota", 0), -x.get("ts", 0)))
 
@@ -718,6 +754,7 @@ def modo_repetir_resumen(e, cfg, conf, ruta):
             if n["nivel"] in ("descartado", "fuego"):
                 continue
             if True:                         # al repetir, la IA repasa todo (es algo puntual)
+                _completar_cambios(n, ctx)
                 res = ia.enriquecer(n, e, conf, ctx, readme=_readme(n, ctx))
                 if not ia.combinar(n, res, conf["umbral_fuego"]):
                     print(f"[repetir] la IA lo descarta: {n.get('titulo')}")
@@ -725,6 +762,7 @@ def modo_repetir_resumen(e, cfg, conf, ruta):
                 n["nivel"] = reglas.nivel(n["nota"], conf)
                 if n["nivel"] in ("descartado", "fuego"):
                     continue
+            _novedades_sin_ia(n)
             items.append(n)
         except Exception as ex:
             print(f"[repetir] {type(ex).__name__} en {x.get('clave')}")

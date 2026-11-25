@@ -67,6 +67,9 @@ def aviso(n, prueba=False):
     if n.get("confirmado_por"):
         lin.append("📰 Lo confirma: " + escape(", ".join(n["confirmado_por"])))
     lin.append(f"📺 Competencia: {escape(n.get('competencia', 'sin datos'))}")
+    nov = [v for v in (n.get("novedades") or []) if v][:6]
+    if nov and n["tipo"] == "release":
+        lin += ["", _cab_novedades(n)] + [f"• {escape(corta(v, 140))}" for v in nov]
     if n.get("resumen"):
         lin += ["", f"📝 <b>Qué es:</b> {escape(n['resumen'])}"]
     if n.get("para_que"):
@@ -135,6 +138,9 @@ def resumen(items, zona, extra=0, repetido=False, tarde=False, desde="", titulo=
                 texto = x.get("frase") or x.get("para_que") or x.get("resumen")
                 if texto:
                     linea += f"\n  {escape(corta(texto, 240))}"
+                nov = [v for v in (x.get("novedades") or []) if v][:3]
+                if nov and x.get("tipo") == "release":
+                    linea += "\n  🆕 " + escape(corta("; ".join(nov), 260))
             lin.append(linea)
             if niv == "interesante":
                 lin.append("")                 # aire entre los ⭐, que ahora son más largos
@@ -149,9 +155,22 @@ def resumen(items, zona, extra=0, repetido=False, tarde=False, desde="", titulo=
     return "\n".join(lin)
 
 
+def _cab_novedades(x):
+    tags = x.get("versiones") or []
+    if len(tags) > 1:
+        return f"🆕 <b>Novedades</b> ({escape(tags[0])} → {escape(tags[-1])}):"
+    if x.get("tag_anterior") and x.get("tag"):
+        return f"🆕 <b>Novedades</b> (desde {escape(x['tag_anterior'])}):"
+    return "🆕 <b>Novedades de esta versión</b>:"
+
+
 def _detalle(x):
-    """Bloque largo de un ⭐: idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos."""
+    """Bloque largo de un ⭐: novedades, idea de vídeo, qué es, para qué sirve, firmware, competencia y pasos."""
     out = []
+    nov = [v for v in (x.get("novedades") or []) if v][:6]
+    if nov and x.get("tipo") == "release":
+        out.append(_cab_novedades(x))
+        out += [f"   • {escape(corta(v, 140))}" for v in nov]
     if x.get("idea_titulo"):
         out.append(f"🎬 <b>Vídeo:</b> «{escape(x['idea_titulo'])}»")
         if x.get("angulo"):

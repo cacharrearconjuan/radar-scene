@@ -22,6 +22,10 @@ SISTEMA = (
     '"para_que_sirve": 1-2 frases: qué puede hacer con ello alguien con la PS5 liberada y a quién le interesa.\n'
     '"idea_video": objeto {"titulo": título atractivo para YouTube (máx. 70 caracteres, sin clickbait '
     'falso), "gancho": la primera frase del vídeo para enganchar}.\n'
+    '"novedades": lista de 2 a 5 puntos cortos (máx. 120 caracteres cada uno) con lo que CAMBIA en esta '
+    'versión respecto a la anterior: funciones nuevas, arreglos importantes, firmwares añadidos. Sácalos '
+    'SOLO de <notas> (notas de la versión y commits desde la anterior), en castellano y sin tecnicismos '
+    'innecesarios. Si no hay datos de cambios o es un repo nuevo, devuelve [].\n'
     '"pasos": lista de 3 a 7 pasos cortos para usarlo/instalarlo, en orden. SOLO pasos que salgan del '
     "README o de las notas (requisitos, firmware, qué cargar y con qué). Si el texto no lo explica, "
     'devuelve [] en vez de inventar.\n'
@@ -229,6 +233,7 @@ def enriquecer(n, e, conf, ctx, readme=""):
             raise FalloIA("; ".join(motivos))
         idea = out.get("idea_video") if isinstance(out.get("idea_video"), dict) else {}
         pasos = out.get("pasos") if isinstance(out.get("pasos"), list) else []
+        novedades = out.get("novedades") if isinstance(out.get("novedades"), list) else []
         try:
             nota = max(1, min(10, int(float(out.get("nota")))))
         except (TypeError, ValueError):
@@ -245,6 +250,7 @@ def enriquecer(n, e, conf, ctx, readme=""):
             "es_juego": out.get("es_juego") is True or str(out.get("es_juego")).lower() == "true",
             "es_scene": not (out.get("es_scene") is False or str(out.get("es_scene")).lower() == "false"),
             "frase": _frase(out.get("en_una_frase"), 160),
+            "novedades": [x for x in (_frase(re.sub(r"^\s*[-*•\d.)]+\s*", "", str(v)), 140) for v in novedades[:5]) if x],
         }
         e["ia"]["fallos"] = 0
         e["ia"].pop("ultimo_error", None)
@@ -303,7 +309,7 @@ def combinar(n, ia, umbral_fuego=9):
     n["nota"] = nota
     n["resumen"] = ia["resumen"]
     n["angulo"] = ia["angulo"]
-    for k in ("para_que", "idea_titulo", "pasos", "frase"):
+    for k in ("para_que", "idea_titulo", "pasos", "frase", "novedades"):
         if ia.get(k):
             n[k] = ia[k]
     if not n.get("fw") and ia["firmwares"]:

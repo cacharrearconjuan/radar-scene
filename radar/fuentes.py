@@ -256,6 +256,28 @@ def commits(e, clave, info, ctx):
     }]
 
 
+def cambios_entre(clave, anterior, tag, maximo=15):
+    """Mensajes de los commits entre dos versiones (para cuando las notas vienen vacías)."""
+    if not anterior or not tag or not clave.startswith("github.com:"):
+        return []
+    nombre = clave.split(":", 1)[1]
+    r = red.pedir(f"{API}/repos/{nombre}/compare/{quote(anterior, safe='')}...{quote(tag, safe='')}", timeout=15)
+    if not r.ok:
+        return []
+    try:
+        commits = r.json().get("commits") or []
+    except (ValueError, AttributeError):
+        return []
+    out = []
+    for c in reversed(commits):                       # los más recientes primero
+        msg = str(((c or {}).get("commit") or {}).get("message") or "").strip().splitlines()
+        if msg and msg[0] and not RE_COMMIT_RUIDO.match(msg[0]):
+            out.append(msg[0][:160])
+        if len(out) >= maximo:
+            break
+    return out
+
+
 def leer_readme(clave):
     """Texto del README (sin caché; solo para dárselo a la IA)."""
     cab = {"Accept": "application/vnd.github.raw+json"} if clave.startswith("github.com") else None
