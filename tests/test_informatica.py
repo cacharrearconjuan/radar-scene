@@ -137,3 +137,38 @@ class TestInformatica(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRevisionInformatica(TestInformatica):
+    def test_github_caido_no_envia_ni_marca(self):
+        rd = Red()
+        red.FALSO = lambda url, cab, datos: red.Resp(429) if "github.com" in url else rd(url, cab, datos)
+        with mock.patch.object(inf, "toca", lambda e: True):
+            rc = inf.main(["resumen", "--estado", self.ruta])
+        self.assertEqual(rc, 1)
+        self.assertEqual(rd.tg, [])
+        self.assertFalse(os.path.exists(self.ruta))
+
+    def test_formato_raro_de_la_ia_usa_plan_b(self):
+        rd = Red()
+
+        def falso(url, cab, datos):
+            if "chat/completions" in url:
+                return red.Resp(200, json.dumps({"choices": [{"message": {"content": '{"resultados": []}'}}]}).encode())
+            return rd(url, cab, datos)
+        red.FALSO = falso
+        with mock.patch.object(inf, "toca", lambda e: True):
+            inf.main(["resumen", "--estado", self.ruta])
+        self.assertIn("winutil-pro", rd.tg[-1])
+        self.assertIn("sin IA", rd.tg[-1])
+
+    def test_nombres_con_url(self):
+        self.assertEqual(inf._nombre("https://github.com/Someone/WinUtil-Pro/"), "someone/winutil-pro")
+
+    def test_filtros_y_enlaces(self):
+        for legit in ["LLM token usage tracker", "JWT token inspector", "Spam filter for your mail server",
+                      "DDoS protection for self-hosted sites", "Linux KMS console", "Linux cheat-sheet"]:
+            self.assertIsNone(inf.RE_FUERA.search(legit), legit)
+        for malo in ["Solana trading bot", "Browser info stealer", "KMS activator for Windows", "cheat engine tables"]:
+            self.assertTrue(inf.RE_FUERA.search(malo), malo)
+        self.assertNotIn("t.me", inf._limpio("Únete en t.me/canal y www.spam.com o bit.ly/x", 200))
