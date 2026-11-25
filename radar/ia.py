@@ -233,6 +233,10 @@ def enriquecer(n, e, conf, ctx, readme=""):
                 ctx["ia_segundos"] = ctx.get("ia_segundos", 0) + time.time() - t0
         if out is None:
             raise FalloIA("; ".join(motivos))
+        if ctx.get("ia_contenido"):          # otro formato (radar de informática): se devuelve en bruto
+            e["ia"]["fallos"] = 0
+            e["ia"].pop("ultimo_error", None)
+            return {"bruto": out}
         idea = out.get("idea_video") if isinstance(out.get("idea_video"), dict) else {}
         pasos = out.get("pasos") if isinstance(out.get("pasos"), list) else []
         novedades = out.get("novedades") if isinstance(out.get("novedades"), list) else []

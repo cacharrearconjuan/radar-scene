@@ -18,13 +18,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: informatica
+  group: ${{ (inputs.modo == 'prueba' || inputs.modo == 'diagnostico') && 'informatica-manual' || 'informatica' }}
   cancel-in-progress: false
 
 jobs:
   informatica:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       MODO: ${{ inputs.modo || 'resumen' }}
       GH_TOKEN: ${{ github.token }}
@@ -52,12 +52,13 @@ jobs:
           elif [ "$codigo" = 2 ]; then
             mkdir -p _estado_info && git -C _estado_info init -q -b estado-informatica && git -C _estado_info remote add origin "$REMOTO"
           else
-            echo "::error::No se pudo leer la rama «estado-informatica» (código $codigo)"
-            exit 1
+            echo "::warning::No se pudo leer la rama «estado-informatica» (código $codigo); reintento"
+            sleep 10
+            git clone -q --depth 1 --branch estado-informatica "$REMOTO" _estado_info
           fi
 
       - name: Radar de informática
-        timeout-minutes: 9
+        timeout-minutes: 11
         run: python3 -m radar.informatica "$MODO" --estado _estado_info/informatica.json
 
       - name: Guardar el estado
